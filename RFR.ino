@@ -59,23 +59,20 @@ void loop()
   static unsigned long lastPrint = 0;
   if (millis() - lastPrint > 500)
   {
-    // Serial.println("\n--- Analog Values [0-15] ---");
-    // for (int i = 0; i < 16; i++)
-    // {
-    //   Serial.print("Ch");
-    //   Serial.print(i);
-    //   Serial.print(":");
-    //   Serial.print(sensorStates[i]);
-    //   Serial.print("\t");
+    Serial.println("\n--- Analog Values [0-15] ---");
+    for (int i = 0; i < 16; i++)
+    {
+      Serial.print(sensorStates[i]);
+      Serial.print(" ");
 
-    //   if ((i + 1) % 4 == 0)
-    //   {
-    //     Serial.println(); // Print format cleaner in 4x4 grid
-    //   }
-    // }
+      if ((i + 1) % 4 == 0)
+      {
+        Serial.println(); // Print format cleaner in 4x4 grid
+      }
+    }
 
     // Testing with only 1 IR + LED now (on CH: 06)
-    Serial.print(sensorStates[6]);
+
     lastPrint = millis();
   }
 }
