@@ -1,4 +1,5 @@
 // One single array/ pins for BOTH MUX modules (short circuited)
+
 const int sharedSelectPins[4] = {14, 27, 26, 25};
 
 // Individual signal lines
