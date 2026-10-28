@@ -75,6 +75,9 @@ constexpr bool SKIP_CALIBRATION      = true; //set false when on full track
 constexpr uint16_t DEFAULT_RAW_MIN   = 200;  //fallback white adc
 constexpr uint16_t DEFAULT_RAW_MAX   = 4000; //fallback black adc
 
+//bench diagnostic mode: prints visual sensor bar and encoder counts, motors idle
+constexpr bool BENCH_DEBUG_MODE      = true; //set false to run full navigation
+
 //odometry & distance thresholds
 //shortcut: default 28 ticks per cm, calibrate with ruler on bench
 constexpr float TICKS_PER_CM         = 28.0f;
