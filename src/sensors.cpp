@@ -34,6 +34,15 @@ void sensorsInit() {
 }
 
 void sensorsCalibrate() {
+    //skip sweep during bench wiring tests
+    if (SKIP_CALIBRATION) {
+        for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+            rawMin[i] = DEFAULT_RAW_MIN;
+            rawMax[i] = DEFAULT_RAW_MAX;
+        }
+        return;
+    }
+
     pinMode(PIN_LED, OUTPUT);
     uint32_t startTime = millis();
 

@@ -70,6 +70,11 @@ constexpr uint32_t MUX_SETTLE_US    = 5;    //adc ghosting prevention
 constexpr uint32_t CALIB_SWEEP_MS   = 5000; //hand sweep duration
 constexpr uint32_t CALIB_PLACE_MS   = 2000; //placement window
 
+//bench test override: skip sweep when bot cannot be lifted
+constexpr bool SKIP_CALIBRATION      = true; //set false when on full track
+constexpr uint16_t DEFAULT_RAW_MIN   = 200;  //fallback white adc
+constexpr uint16_t DEFAULT_RAW_MAX   = 4000; //fallback black adc
+
 //odometry & distance thresholds
 //shortcut: default 28 ticks per cm, calibrate with ruler on bench
 constexpr float TICKS_PER_CM         = 28.0f;

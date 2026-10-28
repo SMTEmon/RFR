@@ -19,12 +19,19 @@ void setup() {
     sensorsInit();
 
     Serial.println("--- LFR Booting ---");
-    Serial.println("Sweep sensor bar over black and white for 5s...");
 
-    //calibrate min max and wait for placement in #31
+    if (SKIP_CALIBRATION) {
+        Serial.println("Bench mode: Hand-sweep calibration skipped!");
+    } else {
+        Serial.println("Sweep sensor bar over black and white for 5s...");
+    }
+
+    //calibrate min max or load bench defaults
     sensorsCalibrate();
 
-    Serial.println("Calibration complete. Placing inside #31...");
+    if (!SKIP_CALIBRATION) {
+        Serial.println("Calibration complete. Placing inside #31...");
+    }
 
     //arm motors and launch navigator
     motorsArm(true);
