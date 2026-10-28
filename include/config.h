@@ -66,14 +66,18 @@ constexpr int16_t THRESH_BLACK_EXIT  = 400; //schmitt trigger off
 
 //timing
 constexpr uint32_t LOOP_INTERVAL_US = 2000; //500hz loop
-constexpr uint32_t MUX_SETTLE_US    = 5;    //adc ghosting prevention
+constexpr uint32_t MUX_SETTLE_US    = 20;   //rfr.ino used 15us, 20us ensures stable adc
 constexpr uint32_t CALIB_SWEEP_MS   = 5000; //hand sweep duration
 constexpr uint32_t CALIB_PLACE_MS   = 2000; //placement window
 
 //bench test override: skip sweep when bot cannot be lifted
 constexpr bool SKIP_CALIBRATION      = true; //set false when on full track
-constexpr uint16_t DEFAULT_RAW_MIN   = 200;  //fallback white adc
-constexpr uint16_t DEFAULT_RAW_MAX   = 4000; //fallback black adc
+constexpr uint16_t DEFAULT_RAW_MIN   = 200;  //fallback ambient/dark adc (from rfr.ino)
+constexpr uint16_t DEFAULT_RAW_MAX   = 4000; //fallback reflection/white adc (from rfr.ino)
+
+//sensor polarity: rfr.ino states dark=200 and white/reflection=4000
+//so black line gives low adc and white floor gives high adc
+constexpr bool ADC_HIGH_IS_BLACK     = false;
 
 //bench diagnostic mode: prints visual sensor bar and encoder counts, motors idle
 constexpr bool BENCH_DEBUG_MODE      = true; //set false to run full navigation

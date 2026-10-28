@@ -14,6 +14,9 @@ void sensorsRead(bool isInverted);
 //get normalized line value (0 white, 1000 black)
 int16_t getSensorValue(uint8_t idx);
 
+//get raw unnormalized adc reading (0..4095)
+uint16_t getSensorRaw(uint8_t idx);
+
 //schmitt trigger boolean states
 bool isSensorBlack(uint8_t idx);
 

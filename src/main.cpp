@@ -57,7 +57,7 @@ static void runBenchDiagnostics() {
         lastRawPrintMillis = millis();
         Serial.print("Raw ADC: ");
         for (uint8_t i = 0; i < NUM_SENSORS; i++) {
-            Serial.print(getSensorValue(i));
+            Serial.print(getSensorRaw(i));
             Serial.print(" ");
         }
         Serial.println();

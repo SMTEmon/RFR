@@ -2,6 +2,7 @@
 
 static uint16_t rawMin[NUM_SENSORS];
 static uint16_t rawMax[NUM_SENSORS];
+static uint16_t sensorRaw[NUM_SENSORS];
 static int16_t sensorVal[NUM_SENSORS];
 static bool sensorBlack[NUM_SENSORS];
 static int32_t lastError = 0;
@@ -75,6 +76,7 @@ void sensorsRead(bool isInverted) {
         setMuxChannel(ch);
         delayMicroseconds(MUX_SETTLE_US);
         uint16_t raw = analogRead(PIN_MUX_SIG);
+        sensorRaw[i] = raw;
 
         //guard against zero span
         uint16_t rmin = rawMin[i];
@@ -85,7 +87,13 @@ void sensorsRead(bool isInverted) {
 
         //normalize 0 (white) to 1000 (black)
         int32_t clamped = constrain(raw, rmin, rmax);
-        int16_t norm = (clamped - rmin) * 1000 / (rmax - rmin);
+        int16_t norm;
+        if (ADC_HIGH_IS_BLACK) {
+            norm = (clamped - rmin) * 1000 / (rmax - rmin);
+        } else {
+            //rfr.ino polarity: dark/black gives low adc (~200) and white gives high adc (~4000)
+            norm = (rmax - clamped) * 1000 / (rmax - rmin);
+        }
 
         //invert polarity if currently inside inverted zone
         if (isInverted) {
@@ -106,6 +114,11 @@ void sensorsRead(bool isInverted) {
 int16_t getSensorValue(uint8_t idx) {
     if (idx >= NUM_SENSORS) return 0;
     return sensorVal[idx];
+}
+
+uint16_t getSensorRaw(uint8_t idx) {
+    if (idx >= NUM_SENSORS) return 0;
+    return sensorRaw[idx];
 }
 
 bool isSensorBlack(uint8_t idx) {
