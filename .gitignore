@@ -1,2 +1,15 @@
+# platformio and build artifacts
+.pio/
 build/
 .refact/
+.vscode/
+
+# obsidian notes & docs
+.obsidian/
+*.md
+
+# images and cad files
+*.png
+*.jpg
+*.jpeg
+*.dxf
