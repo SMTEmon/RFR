@@ -64,6 +64,55 @@ static void runBenchDiagnostics() {
     }
 }
 
+static void runMotorTest() {
+    static uint32_t phaseTimer = 0;
+    static uint8_t phase = 0;
+
+    //cycle phases every 2.5 seconds
+    if (millis() - phaseTimer >= 2500) {
+        phaseTimer = millis();
+        phase = (phase + 1) % 4;
+    }
+
+    int32_t leftEnc = getLeftTicks();
+    int32_t rightEnc = getRightTicks();
+
+    switch (phase) {
+        case 0:
+            //test left motor only
+            drive(130, 0);
+            if (millis() - lastPrintMillis >= 250) {
+                lastPrintMillis = millis();
+                Serial.printf("[MOTOR TEST] LEFT MOTOR ON (PWM 130)  | L_enc: %6ld  R_enc: %6ld\n", (long)leftEnc, (long)rightEnc);
+            }
+            break;
+        case 1:
+            //test right motor only
+            drive(0, 130);
+            if (millis() - lastPrintMillis >= 250) {
+                lastPrintMillis = millis();
+                Serial.printf("[MOTOR TEST] RIGHT MOTOR ON (PWM 130) | L_enc: %6ld  R_enc: %6ld\n", (long)leftEnc, (long)rightEnc);
+            }
+            break;
+        case 2:
+            //test both motors forward
+            drive(130, 130);
+            if (millis() - lastPrintMillis >= 250) {
+                lastPrintMillis = millis();
+                Serial.printf("[MOTOR TEST] BOTH MOTORS ON (PWM 130)  | L_enc: %6ld  R_enc: %6ld\n", (long)leftEnc, (long)rightEnc);
+            }
+            break;
+        case 3:
+            //pause and stop
+            drive(0, 0);
+            if (millis() - lastPrintMillis >= 250) {
+                lastPrintMillis = millis();
+                Serial.printf("[MOTOR TEST] PAUSE (BOTH OFF)         | L_enc: %6ld  R_enc: %6ld\n", (long)leftEnc, (long)rightEnc);
+            }
+            break;
+    }
+}
+
 void setup() {
     Serial.begin(115200);
 
@@ -83,6 +132,12 @@ void setup() {
         Serial.println("Rotate wheels by hand to check L/R encoder counts");
         Serial.println("==================================================");
         sensorsCalibrate();
+    } else if (MOTOR_TEST_MODE) {
+        Serial.println("==================================================");
+        Serial.println("OPEN-LOOP MOTOR TEST ACTIVE");
+        Serial.println("Cycle: Left (2.5s) -> Right (2.5s) -> Both (2.5s) -> Stop (2.5s)");
+        Serial.println("==================================================");
+        motorsArm(true);
     } else {
         if (SKIP_CALIBRATION) {
             Serial.println("Bench mode: Hand-sweep calibration skipped!");
@@ -113,6 +168,12 @@ void loop() {
             lastPrintMillis = millis();
             runBenchDiagnostics();
         }
+        return;
+    }
+
+    //open-loop motor test branch
+    if (MOTOR_TEST_MODE) {
+        runMotorTest();
         return;
     }
 

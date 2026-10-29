@@ -79,8 +79,12 @@ constexpr uint16_t DEFAULT_RAW_MAX   = 4000; //fallback reflection/white adc (fr
 //so black line gives low adc and white floor gives high adc
 constexpr bool ADC_HIGH_IS_BLACK     = false;
 
-//bench diagnostic mode: prints visual sensor bar and encoder counts, motors idle
-constexpr bool BENCH_DEBUG_MODE      = true; //set false to run full navigation
+//modes:
+//BENCH_DEBUG_MODE: safe sensor diagnostic (motors 0)
+//MOTOR_TEST_MODE: open-loop sequential motor test (left -> right -> both -> stop)
+//set both false to run full autonomous navigation on track
+constexpr bool BENCH_DEBUG_MODE      = false;
+constexpr bool MOTOR_TEST_MODE       = true;
 
 //odometry & distance thresholds
 //shortcut: default 28 ticks per cm, calibrate with ruler on bench
