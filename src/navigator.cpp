@@ -193,17 +193,23 @@ void navigatorUpdate() {
 
             int32_t distance = currentTicks - checkStartTicks;
 
-            //if line re-emerges before wing setback, it was a cross or t-junction
-            if (distance < WING_SETBACK_TICKS && !isFrontAllBlack()) {
+            //if line re-emerges or front is no longer all black, return to normal tracking
+            if (!isFrontAllBlack() && hasLine()) {
                 currentState = STATE_NORMAL_PID;
                 break;
             }
 
-            //all 16 sensors solid black confirmed past stop threshold -> inside #36 finish box
-            if (distance >= STOP_BOX_TICKS && isAllBlack()) {
-                shortBrake();
-                motorsArm(false);
-                currentState = STATE_STOPPED;
+            //check finish box confirmation after driving stop box distance
+            if (distance >= STOP_BOX_TICKS) {
+                if (isAllBlack()) {
+                    shortBrake();
+                    motorsArm(false);
+                    currentState = STATE_STOPPED;
+                } else if (hasLine()) {
+                    currentState = STATE_NORMAL_PID;
+                } else {
+                    currentState = STATE_GAP_OR_DEADEND;
+                }
                 break;
             }
             break;

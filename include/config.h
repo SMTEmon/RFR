@@ -61,8 +61,8 @@ constexpr int32_t PID_WEIGHTS_8[8] = {
 };
 
 //detection thresholds
-constexpr int16_t THRESH_BLACK_ENTER = 600; //schmitt trigger on
-constexpr int16_t THRESH_BLACK_EXIT  = 400; //schmitt trigger off
+constexpr int16_t THRESH_BLACK_ENTER = 500; //schmitt trigger on (500 catches ~2100 adc on uncalibrated sensors)
+constexpr int16_t THRESH_BLACK_EXIT  = 350; //schmitt trigger off
 
 //timing
 constexpr uint32_t LOOP_INTERVAL_US = 2000; //500hz loop
