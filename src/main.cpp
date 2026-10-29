@@ -21,6 +21,25 @@ static void printSensorMap() {
     Serial.print("] ");
 }
 
+static void printFeatureTags() {
+    if (hasLeftWing())        Serial.print("[L_WING] ");
+    if (hasRightWing())       Serial.print("[R_WING] ");
+    if (hasLeftBevel())       Serial.print("[L_BEVEL] ");
+    if (hasRightBevel())      Serial.print("[R_BEVEL] ");
+    if (isInvertedPattern())  Serial.print("[INVERTED] ");
+    if (isAllBlack())         Serial.print("[ALL_BLACK] ");
+    if (isAllWhite())         Serial.print("[ALL_WHITE] ");
+}
+
+static void printRawADC() {
+    Serial.print("Raw ADC: ");
+    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+        Serial.print(getSensorRaw(i));
+        Serial.print(" ");
+    }
+    Serial.println();
+}
+
 static void runBenchDiagnostics() {
     //keep motors safely stopped while testing on bench
     drive(0, 0);
@@ -34,37 +53,15 @@ static void runBenchDiagnostics() {
 
     //visual 16-sensor map (# = black line, . = white floor)
     printSensorMap();
+    printFeatureTags();
 
     //calculated pid lateral error
-    Serial.print("Err: ");
-    Serial.print(err);
-
-    //wheel encoder counts (rotate wheels by hand to verify direction)
-    Serial.print("\tL_enc: ");
-    Serial.print(leftEnc);
-    Serial.print("  R_enc: ");
-    Serial.print(rightEnc);
-
-    //detected track feature flags
-    if (hasLeftWing())        Serial.print(" [L_WING]");
-    if (hasRightWing())       Serial.print(" [R_WING]");
-    if (hasLeftBevel())       Serial.print(" [L_BEVEL]");
-    if (hasRightBevel())      Serial.print(" [R_BEVEL]");
-    if (isInvertedPattern())  Serial.print(" [INVERTED]");
-    if (isAllBlack())         Serial.print(" [ALL_BLACK]");
-    if (isAllWhite())         Serial.print(" [ALL_WHITE]");
-
-    Serial.println();
+    Serial.printf("| Err: %5ld  L_enc: %5ld  R_enc: %5ld\n", (long)err, (long)leftEnc, (long)rightEnc);
 
     //print raw adc values every 1 second
     if (millis() - lastRawPrintMillis >= 1000) {
         lastRawPrintMillis = millis();
-        Serial.print("Raw ADC: ");
-        for (uint8_t i = 0; i < NUM_SENSORS; i++) {
-            Serial.print(getSensorRaw(i));
-            Serial.print(" ");
-        }
-        Serial.println();
+        printRawADC();
     }
 }
 
@@ -86,21 +83,27 @@ static void runMotorTest() {
     int32_t err = computePositionError(false);
 
     switch (phase) {
-        case 0: drive(130, 0); break;   //left only
-        case 1: drive(0, 130); break;   //right only
-        case 2: drive(130, 130); break; //both
+        case 0: drive(TEST_MOTOR_SPEED, 0); break;   //left only
+        case 1: drive(0, TEST_MOTOR_SPEED); break;   //right only
+        case 2: drive(TEST_MOTOR_SPEED, TEST_MOTOR_SPEED); break; //both
         case 3: drive(0, 0); break;     //pause
     }
 
     if (millis() - lastPrintMillis >= 250) {
         lastPrintMillis = millis();
         printSensorMap();
+        printFeatureTags();
         switch (phase) {
-            case 0: Serial.printf("Err: %5ld  L: %5ld  R: %5ld | [TEST] LEFT MOTOR ON\n",  (long)err, (long)leftEnc, (long)rightEnc); break;
-            case 1: Serial.printf("Err: %5ld  L: %5ld  R: %5ld | [TEST] RIGHT MOTOR ON\n", (long)err, (long)leftEnc, (long)rightEnc); break;
-            case 2: Serial.printf("Err: %5ld  L: %5ld  R: %5ld | [TEST] BOTH MOTORS ON\n",  (long)err, (long)leftEnc, (long)rightEnc); break;
-            case 3: Serial.printf("Err: %5ld  L: %5ld  R: %5ld | [TEST] PAUSE (BOTH OFF)\n", (long)err, (long)leftEnc, (long)rightEnc); break;
+            case 0: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] LEFT MOTOR ON (PWM %d)\n",  (long)err, (long)leftEnc, (long)rightEnc, TEST_MOTOR_SPEED); break;
+            case 1: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] RIGHT MOTOR ON (PWM %d)\n", (long)err, (long)leftEnc, (long)rightEnc, TEST_MOTOR_SPEED); break;
+            case 2: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] BOTH MOTORS ON (PWM %d)\n",  (long)err, (long)leftEnc, (long)rightEnc, TEST_MOTOR_SPEED); break;
+            case 3: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] PAUSE (BOTH OFF)\n", (long)err, (long)leftEnc, (long)rightEnc); break;
         }
+    }
+
+    if (millis() - lastRawPrintMillis >= 1000) {
+        lastRawPrintMillis = millis();
+        printRawADC();
     }
 }
 
@@ -183,10 +186,16 @@ void loop() {
         lastPrintMillis = millis();
 
         printSensorMap();
-        Serial.printf("State: %-15s Dist: %5.1f cm  L: %5ld  R: %5ld\n",
+        printFeatureTags();
+        Serial.printf("| State: %-15s Dist: %5.1f cm  L: %5ld  R: %5ld\n",
                       getNavStateName(),
                       ticksToCm(getAvgTicks()),
                       (long)getLeftTicks(),
                       (long)getRightTicks());
+    }
+
+    if (millis() - lastRawPrintMillis >= 1000) {
+        lastRawPrintMillis = millis();
+        printRawADC();
     }
 }

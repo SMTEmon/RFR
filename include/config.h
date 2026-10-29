@@ -33,9 +33,9 @@ constexpr uint8_t PIN_LED     = 2;  //devkit onboard led
 //sensor array geometry
 constexpr uint8_t NUM_SENSORS = 16;
 
-//reversed channel map: logical idx 0 (left wing) -> c15 ... idx 15 (right wing) -> c0
+//logical idx 0 (left wing) -> c0 ... idx 15 (right wing) -> c15
 inline constexpr uint8_t logicalToMux(uint8_t idx) {
-    return 15 - idx;
+    return idx;
 }
 
 //exact cad coordinates from final.dxf in mm
@@ -96,8 +96,11 @@ constexpr int32_t STOP_BOX_TICKS     = static_cast<int32_t>(7.5f  * TICKS_PER_CM
 constexpr int32_t LATCH_WINDOW_TICKS = static_cast<int32_t>(8.0f  * TICKS_PER_CM);
 constexpr int32_t UTURN_180_TICKS    = static_cast<int32_t>(20.0f * TICKS_PER_CM);
 
+//open-loop test speed
+constexpr int16_t TEST_MOTOR_SPEED   = 130;   //pwm duty cycle for open-loop motor test (0..255)
+
 //motor & encoder polarity
-constexpr bool INVERT_LEFT_MOTOR     = true;  //inverts left motor forward direction
+constexpr bool INVERT_LEFT_MOTOR     = false; //flipped to false so left motor rolls forward
 constexpr bool INVERT_RIGHT_MOTOR    = false; //inverts right motor forward direction
 constexpr bool INVERT_LEFT_ENC       = false; //toggle if left encoder counts down when rolling forward
 constexpr bool INVERT_RIGHT_ENC      = false; //toggle if right encoder counts down when rolling forward
