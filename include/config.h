@@ -33,9 +33,9 @@ constexpr uint8_t PIN_LED     = 2;  //devkit onboard led
 //sensor array geometry
 constexpr uint8_t NUM_SENSORS = 16;
 
-//logical idx 0 (left wing) -> c0 ... idx 15 (right wing) -> c15
+//reversed channel map: logical idx 0 (left wing) -> c15 ... idx 15 (right wing) -> c0
 inline constexpr uint8_t logicalToMux(uint8_t idx) {
-    return idx;
+    return 15 - idx;
 }
 
 //exact cad coordinates from final.dxf in mm
