@@ -33,9 +33,9 @@ constexpr uint8_t PIN_LED     = 2;  //devkit onboard led
 //sensor array geometry
 constexpr uint8_t NUM_SENSORS = 16;
 
-//reversed channel map: logical idx 0 (left wing) -> c15 ... idx 15 (right wing) -> c0
+//logical idx 0 (left wing) -> c0 ... idx 15 (right wing) -> c15
 inline constexpr uint8_t logicalToMux(uint8_t idx) {
-    return 15 - idx;
+    return idx;
 }
 
 //exact cad coordinates from final.dxf in mm
@@ -75,9 +75,11 @@ constexpr bool SKIP_CALIBRATION      = true; //set false when on full track
 constexpr uint16_t DEFAULT_RAW_MIN   = 200;  //fallback ambient/dark adc (from rfr.ino)
 constexpr uint16_t DEFAULT_RAW_MAX   = 4000; //fallback reflection/white adc (from rfr.ino)
 
-//sensor polarity: rfr.ino states dark=200 and white/reflection=4000
-//so black line gives low adc and white floor gives high adc
-constexpr bool ADC_HIGH_IS_BLACK     = false;
+//sensor polarity:
+//hardware has pull-up to vcc:
+//white surface reflects ir -> phototransistor conducts to gnd -> low adc (~200)
+//black line absorbs ir -> phototransistor off -> pull-up holds high -> high adc (~4000)
+constexpr bool ADC_HIGH_IS_BLACK     = true;
 
 //modes:
 //BENCH_DEBUG_MODE: safe sensor diagnostic (motors 0)
