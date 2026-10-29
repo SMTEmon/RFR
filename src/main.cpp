@@ -9,6 +9,18 @@ static uint32_t lastLoopMicros = 0;
 static uint32_t lastPrintMillis = 0;
 static uint32_t lastRawPrintMillis = 0;
 
+static void printSensorMap() {
+    Serial.print("Map: [ ");
+    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+        if (isSensorBlack(i)) {
+            Serial.print("# ");
+        } else {
+            Serial.print(". ");
+        }
+    }
+    Serial.print("] ");
+}
+
 static void runBenchDiagnostics() {
     //keep motors safely stopped while testing on bench
     drive(0, 0);
@@ -21,15 +33,7 @@ static void runBenchDiagnostics() {
     int32_t rightEnc = getRightTicks();
 
     //visual 16-sensor map (# = black line, . = white floor)
-    Serial.print("Map: [ ");
-    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
-        if (isSensorBlack(i)) {
-            Serial.print("# ");
-        } else {
-            Serial.print(". ");
-        }
-    }
-    Serial.print("] ");
+    printSensorMap();
 
     //calculated pid lateral error
     Serial.print("Err: ");
@@ -68,6 +72,9 @@ static void runMotorTest() {
     static uint32_t phaseTimer = 0;
     static uint8_t phase = 0;
 
+    //sample sensors so map is always live during motor test
+    sensorsRead(false);
+
     //cycle phases every 2.5 seconds
     if (millis() - phaseTimer >= 2500) {
         phaseTimer = millis();
@@ -76,40 +83,24 @@ static void runMotorTest() {
 
     int32_t leftEnc = getLeftTicks();
     int32_t rightEnc = getRightTicks();
+    int32_t err = computePositionError(false);
 
     switch (phase) {
-        case 0:
-            //test left motor only
-            drive(130, 0);
-            if (millis() - lastPrintMillis >= 250) {
-                lastPrintMillis = millis();
-                Serial.printf("[MOTOR TEST] LEFT MOTOR ON (PWM 130)  | L_enc: %6ld  R_enc: %6ld\n", (long)leftEnc, (long)rightEnc);
-            }
-            break;
-        case 1:
-            //test right motor only
-            drive(0, 130);
-            if (millis() - lastPrintMillis >= 250) {
-                lastPrintMillis = millis();
-                Serial.printf("[MOTOR TEST] RIGHT MOTOR ON (PWM 130) | L_enc: %6ld  R_enc: %6ld\n", (long)leftEnc, (long)rightEnc);
-            }
-            break;
-        case 2:
-            //test both motors forward
-            drive(130, 130);
-            if (millis() - lastPrintMillis >= 250) {
-                lastPrintMillis = millis();
-                Serial.printf("[MOTOR TEST] BOTH MOTORS ON (PWM 130)  | L_enc: %6ld  R_enc: %6ld\n", (long)leftEnc, (long)rightEnc);
-            }
-            break;
-        case 3:
-            //pause and stop
-            drive(0, 0);
-            if (millis() - lastPrintMillis >= 250) {
-                lastPrintMillis = millis();
-                Serial.printf("[MOTOR TEST] PAUSE (BOTH OFF)         | L_enc: %6ld  R_enc: %6ld\n", (long)leftEnc, (long)rightEnc);
-            }
-            break;
+        case 0: drive(130, 0); break;   //left only
+        case 1: drive(0, 130); break;   //right only
+        case 2: drive(130, 130); break; //both
+        case 3: drive(0, 0); break;     //pause
+    }
+
+    if (millis() - lastPrintMillis >= 250) {
+        lastPrintMillis = millis();
+        printSensorMap();
+        switch (phase) {
+            case 0: Serial.printf("Err: %5ld  L: %5ld  R: %5ld | [TEST] LEFT MOTOR ON\n",  (long)err, (long)leftEnc, (long)rightEnc); break;
+            case 1: Serial.printf("Err: %5ld  L: %5ld  R: %5ld | [TEST] RIGHT MOTOR ON\n", (long)err, (long)leftEnc, (long)rightEnc); break;
+            case 2: Serial.printf("Err: %5ld  L: %5ld  R: %5ld | [TEST] BOTH MOTORS ON\n",  (long)err, (long)leftEnc, (long)rightEnc); break;
+            case 3: Serial.printf("Err: %5ld  L: %5ld  R: %5ld | [TEST] PAUSE (BOTH OFF)\n", (long)err, (long)leftEnc, (long)rightEnc); break;
+        }
     }
 }
 
@@ -191,14 +182,11 @@ void loop() {
     if (millis() - lastPrintMillis >= 100) {
         lastPrintMillis = millis();
 
-        Serial.print("State: ");
-        Serial.print(getNavStateName());
-        Serial.print("\tL_enc: ");
-        Serial.print(getLeftTicks());
-        Serial.print("\tR_enc: ");
-        Serial.print(getRightTicks());
-        Serial.print("\tDist: ");
-        Serial.print(ticksToCm(getAvgTicks()), 1);
-        Serial.println(" cm");
+        printSensorMap();
+        Serial.printf("State: %-15s Dist: %5.1f cm  L: %5ld  R: %5ld\n",
+                      getNavStateName(),
+                      ticksToCm(getAvgTicks()),
+                      (long)getLeftTicks(),
+                      (long)getRightTicks());
     }
 }
