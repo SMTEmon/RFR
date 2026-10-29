@@ -44,9 +44,10 @@ void sensorsInit() {
     initMux(selectPins, PIN_MUX_SIG);
     analogReadResolution(12);
 
+    //initialize default calibration range to bench defaults
     for (uint8_t i = 0; i < NUM_SENSORS; i++) {
-        rawMin[i] = 4095;
-        rawMax[i] = 0;
+        rawMin[i] = DEFAULT_RAW_MIN;
+        rawMax[i] = DEFAULT_RAW_MAX;
         sensorRaw[i] = 0;
         sensorVal[i] = 0;
         sensorBlack[i] = false;

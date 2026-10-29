@@ -82,6 +82,7 @@ void setup() {
         Serial.println("Slide black tape across sensors to see [ # . ] map");
         Serial.println("Rotate wheels by hand to check L/R encoder counts");
         Serial.println("==================================================");
+        sensorsCalibrate();
     } else {
         if (SKIP_CALIBRATION) {
             Serial.println("Bench mode: Hand-sweep calibration skipped!");
