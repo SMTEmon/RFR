@@ -84,7 +84,7 @@ constexpr bool ADC_HIGH_IS_BLACK     = false;
 //MOTOR_TEST_MODE: open-loop sequential motor test (left -> right -> both -> stop)
 //set both false to run full autonomous navigation on track
 constexpr bool BENCH_DEBUG_MODE      = false;
-constexpr bool MOTOR_TEST_MODE       = true;
+constexpr bool MOTOR_TEST_MODE       = false;
 
 //odometry & distance thresholds
 //shortcut: default 28 ticks per cm, calibrate with ruler on bench
@@ -100,10 +100,10 @@ constexpr int32_t UTURN_180_TICKS    = static_cast<int32_t>(20.0f * TICKS_PER_CM
 constexpr int16_t TEST_MOTOR_SPEED   = 130;   //pwm duty cycle for open-loop motor test (0..255)
 
 //motor & encoder polarity
-constexpr bool INVERT_LEFT_MOTOR     = false; //flipped to false so left motor rolls forward
+constexpr bool INVERT_LEFT_MOTOR     = true; //flipped to false so left motor rolls forward
 constexpr bool INVERT_RIGHT_MOTOR    = false; //inverts right motor forward direction
-constexpr bool INVERT_LEFT_ENC       = false; //toggle if left encoder counts down when rolling forward
-constexpr bool INVERT_RIGHT_ENC      = false; //toggle if right encoder counts down when rolling forward
+constexpr bool INVERT_LEFT_ENC       = true; //toggle if left encoder counts down when rolling forward
+constexpr bool INVERT_RIGHT_ENC      = true; //toggle if right encoder counts down when rolling forward
 
 //base speed and pid tuning gains
 constexpr int16_t BASE_SPEED         = 140;
