@@ -87,6 +87,7 @@ constexpr bool ADC_HIGH_IS_BLACK     = true;
 //set both false to run full autonomous navigation on track
 constexpr bool BENCH_DEBUG_MODE      = false;
 constexpr bool MOTOR_TEST_MODE       = false;
+constexpr bool ENABLE_INVERTED_ZONE  = false; //enable when track contains #29 white-on-black zone
 
 //odometry & distance thresholds
 //shortcut: default 28 ticks per cm, calibrate with ruler on bench

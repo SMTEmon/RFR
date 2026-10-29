@@ -78,7 +78,7 @@ void navigatorUpdate() {
             }
 
             //check for entry into #29 inverted zone
-            if (isInvertedPattern()) {
+            if (ENABLE_INVERTED_ZONE && isInvertedPattern()) {
                 invertedActive = true;
                 currentState = STATE_INVERTED_PID;
                 break;
