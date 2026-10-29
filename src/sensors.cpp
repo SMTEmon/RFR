@@ -1,5 +1,8 @@
 #include "sensors.h"
 
+//pack select pins into array
+static const int selectPins[4] = {PIN_MUX_S0, PIN_MUX_S1, PIN_MUX_S2, PIN_MUX_S3};
+
 static uint16_t rawMin[NUM_SENSORS];
 static uint16_t rawMax[NUM_SENSORS];
 static uint16_t sensorRaw[NUM_SENSORS];
@@ -7,28 +10,44 @@ static int16_t sensorVal[NUM_SENSORS];
 static bool sensorBlack[NUM_SENSORS];
 static int32_t lastError = 0;
 
-static void setMuxChannel(uint8_t ch) {
-    digitalWrite(PIN_MUX_S0, (ch & 0x01) ? HIGH : LOW);
-    digitalWrite(PIN_MUX_S1, (ch & 0x02) ? HIGH : LOW);
-    digitalWrite(PIN_MUX_S2, (ch & 0x04) ? HIGH : LOW);
-    digitalWrite(PIN_MUX_S3, (ch & 0x08) ? HIGH : LOW);
+//mux helper functions
+static void initMux(const int pins[4], int signalPin) {
+    for (int i = 0; i < 4; i++) {
+        pinMode(pins[i], OUTPUT);
+        digitalWrite(pins[i], LOW);
+    }
+    pinMode(signalPin, INPUT);
 }
 
-void sensorsInit() {
-    //setup mux address lines
-    pinMode(PIN_MUX_S0, OUTPUT);
-    pinMode(PIN_MUX_S1, OUTPUT);
-    pinMode(PIN_MUX_S2, OUTPUT);
-    pinMode(PIN_MUX_S3, OUTPUT);
+static void setMuxAddress(const int pins[4], uint8_t channel) {
+    for (int bit = 0; bit < 4; bit++) {
+        digitalWrite(pins[bit], bitRead(channel, bit));
+    }
+}
 
-    //setup analog input pin
-    pinMode(PIN_MUX_SIG, INPUT);
+static uint16_t readSensorChannel(const int pins[4], int signalPin, uint8_t channel) {
+    setMuxAddress(pins, channel);
+
+    //let mux and phototransistor rc line stabilize (40us)
+    delayMicroseconds(40);
+
+    //dummy read to discharge/precharge esp32 adc internal capacitor
+    analogRead(signalPin);
+    delayMicroseconds(5);
+
+    //actual stable reading
+    return static_cast<uint16_t>(analogRead(signalPin));
+}
+
+//core sensor api
+void sensorsInit() {
+    initMux(selectPins, PIN_MUX_SIG);
     analogReadResolution(12);
 
-    //initialize default calibration range
     for (uint8_t i = 0; i < NUM_SENSORS; i++) {
         rawMin[i] = 4095;
         rawMax[i] = 0;
+        sensorRaw[i] = 0;
         sensorVal[i] = 0;
         sensorBlack[i] = false;
     }
@@ -54,9 +73,7 @@ void sensorsCalibrate() {
 
         for (uint8_t i = 0; i < NUM_SENSORS; i++) {
             uint8_t ch = logicalToMux(i);
-            setMuxChannel(ch);
-            delayMicroseconds(MUX_SETTLE_US);
-            uint16_t raw = analogRead(PIN_MUX_SIG);
+            uint16_t raw = readSensorChannel(selectPins, PIN_MUX_SIG, ch);
 
             if (raw < rawMin[i]) rawMin[i] = raw;
             if (raw > rawMax[i]) rawMax[i] = raw;
@@ -64,7 +81,7 @@ void sensorsCalibrate() {
         delay(2);
     }
 
-    //phase 2: 2 second steady pause to set bot inside #31
+    //phase 2: 2 second steady pause to set bot inside start box
     digitalWrite(PIN_LED, HIGH);
     delay(CALIB_PLACE_MS);
     digitalWrite(PIN_LED, LOW);
@@ -73,9 +90,7 @@ void sensorsCalibrate() {
 void sensorsRead(bool isInverted) {
     for (uint8_t i = 0; i < NUM_SENSORS; i++) {
         uint8_t ch = logicalToMux(i);
-        setMuxChannel(ch);
-        delayMicroseconds(MUX_SETTLE_US);
-        uint16_t raw = analogRead(PIN_MUX_SIG);
+        uint16_t raw = readSensorChannel(selectPins, PIN_MUX_SIG, ch);
         sensorRaw[i] = raw;
 
         //guard against zero span
@@ -91,7 +106,7 @@ void sensorsRead(bool isInverted) {
         if (ADC_HIGH_IS_BLACK) {
             norm = (clamped - rmin) * 1000 / (rmax - rmin);
         } else {
-            //rfr.ino polarity: dark/black gives low adc (~200) and white gives high adc (~4000)
+            //dark gives low adc (~200) and white gives high adc (~4000)
             norm = (rmax - clamped) * 1000 / (rmax - rmin);
         }
 
@@ -212,16 +227,32 @@ int32_t computePositionError(bool isInverted) {
 void printSensorRaw() {
     for (uint8_t i = 0; i < NUM_SENSORS; i++) {
         uint8_t ch = logicalToMux(i);
-        setMuxChannel(ch);
-        delayMicroseconds(MUX_SETTLE_US);
-        Serial.print(analogRead(PIN_MUX_SIG));
-        Serial.print(i == NUM_SENSORS - 1 ? "\n" : "\t");
+        sensorRaw[i] = readSensorChannel(selectPins, PIN_MUX_SIG, ch);
     }
+
+    Serial.println("\n+-----------------------------------------------------------+");
+    Serial.println("|                    ANALOG SENSOR READINGS                 |");
+    Serial.println("+-----------------------------------------------------------+");
+
+    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+        Serial.printf("| S%02d: %4d ", i, sensorRaw[i]);
+        if ((i + 1) % 4 == 0) {
+            Serial.println("|");
+        }
+    }
+    Serial.println("+-----------------------------------------------------------+");
 }
 
 void printSensorCalibrated() {
+    Serial.println("\n+-----------------------------------------------------------+");
+    Serial.println("|                  CALIBRATED SENSOR READINGS               |");
+    Serial.println("+-----------------------------------------------------------+");
+
     for (uint8_t i = 0; i < NUM_SENSORS; i++) {
-        Serial.print(sensorVal[i]);
-        Serial.print(i == NUM_SENSORS - 1 ? "\n" : "\t");
+        Serial.printf("| S%02d: %4d ", i, sensorVal[i]);
+        if ((i + 1) % 4 == 0) {
+            Serial.println("|");
+        }
     }
+    Serial.println("+-----------------------------------------------------------+");
 }
