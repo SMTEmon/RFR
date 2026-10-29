@@ -18,7 +18,7 @@ constexpr uint8_t PWM_RES_BITS = 8; //8bit 0..255
 
 //encoders (g35 is input only without pullup)
 constexpr uint8_t PIN_ENC_LA = 32;
-constexpr uint8_t PIN_ENC_LB = 35;
+constexpr uint8_t PIN_ENC_LB = 22;
 constexpr uint8_t PIN_ENC_RA = 16;
 constexpr uint8_t PIN_ENC_RB = 17;
 
@@ -27,7 +27,7 @@ constexpr uint8_t PIN_MUX_S0  = 5;
 constexpr uint8_t PIN_MUX_S1  = 18;
 constexpr uint8_t PIN_MUX_S2  = 19;
 constexpr uint8_t PIN_MUX_S3  = 21;
-constexpr uint8_t PIN_MUX_SIG = 34; //adc1 channel 6
+constexpr uint8_t PIN_MUX_SIG = 15; //adc1 channel 6
 constexpr uint8_t PIN_LED     = 2;  //devkit onboard led
 
 //sensor array geometry
