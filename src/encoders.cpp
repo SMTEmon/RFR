@@ -58,21 +58,18 @@ int32_t getLeftTicks() {
     portENTER_CRITICAL(&encMux);
     int32_t val = leftTicks;
     portEXIT_CRITICAL(&encMux);
-    return val;
+    return INVERT_LEFT_ENC ? -val : val;
 }
 
 int32_t getRightTicks() {
     portENTER_CRITICAL(&encMux);
     int32_t val = rightTicks;
     portEXIT_CRITICAL(&encMux);
-    return val;
+    return INVERT_RIGHT_ENC ? -val : val;
 }
 
 int32_t getAvgTicks() {
-    portENTER_CRITICAL(&encMux);
-    int32_t val = (leftTicks + rightTicks) / 2;
-    portEXIT_CRITICAL(&encMux);
-    return val;
+    return (getLeftTicks() + getRightTicks()) / 2;
 }
 
 float ticksToCm(int32_t ticks) {

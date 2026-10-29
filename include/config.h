@@ -96,6 +96,12 @@ constexpr int32_t STOP_BOX_TICKS     = static_cast<int32_t>(7.5f  * TICKS_PER_CM
 constexpr int32_t LATCH_WINDOW_TICKS = static_cast<int32_t>(8.0f  * TICKS_PER_CM);
 constexpr int32_t UTURN_180_TICKS    = static_cast<int32_t>(20.0f * TICKS_PER_CM);
 
+//motor & encoder polarity
+constexpr bool INVERT_LEFT_MOTOR     = true;  //inverts left motor forward direction
+constexpr bool INVERT_RIGHT_MOTOR    = false; //inverts right motor forward direction
+constexpr bool INVERT_LEFT_ENC       = false; //toggle if left encoder counts down when rolling forward
+constexpr bool INVERT_RIGHT_ENC      = false; //toggle if right encoder counts down when rolling forward
+
 //base speed and pid tuning gains
 constexpr int16_t BASE_SPEED         = 140;
 constexpr int16_t MIN_SPEED          = 80;

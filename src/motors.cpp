@@ -27,6 +27,10 @@ void motorsArm(bool enable) {
 }
 
 void drive(int16_t leftSpeed, int16_t rightSpeed) {
+    //apply polarity flags
+    if (INVERT_LEFT_MOTOR)  leftSpeed  = -leftSpeed;
+    if (INVERT_RIGHT_MOTOR) rightSpeed = -rightSpeed;
+
     //clamp values to 8bit pwm bounds
     leftSpeed = constrain(leftSpeed, -255, 255);
     rightSpeed = constrain(rightSpeed, -255, 255);
