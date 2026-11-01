@@ -6,166 +6,238 @@
   <title>LFR Telemetry Cockpit | ESP-NOW WebSerial</title>
   <style>
     :root {
-      --bg-dark: #0a0e17;
-      --card-bg: #121826;
-      --card-border: #1e293b;
+      --bg-dark: #070b12;
+      --card-bg: #0d131f;
+      --card-border: #1a2333;
       --cyan: #06b6d4;
       --cyan-glow: rgba(6, 182, 212, 0.4);
       --green: #10b981;
       --green-glow: rgba(16, 185, 129, 0.4);
       --red: #ef4444;
       --red-glow: rgba(239, 68, 68, 0.4);
+      --purple: #a855f7;
       --yellow: #f59e0b;
       --text-main: #f8fafc;
-      --text-muted: #94a3b8;
+      --text-muted: #8492a6;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; }
-    body { background: var(--bg-dark); color: var(--text-main); min-height: 100vh; padding: 16px; overflow-x: hidden; }
+    body { background: var(--bg-dark); color: var(--text-main); min-height: 100vh; padding: 14px; overflow-x: hidden; }
 
     /* Header */
     header {
       display: flex; justify-content: space-between; align-items: center;
       background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px;
-      padding: 12px 20px; margin-bottom: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      padding: 10px 18px; margin-bottom: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
     }
     .logo-area { display: flex; align-items: center; gap: 12px; }
     .logo-badge {
       background: linear-gradient(135deg, var(--cyan), #3b82f6); color: #fff;
-      font-weight: 800; font-size: 14px; padding: 4px 10px; border-radius: 6px;
+      font-weight: 800; font-size: 13px; padding: 4px 10px; border-radius: 6px; letter-spacing: 0.5px;
     }
-    .title { font-size: 18px; font-weight: 700; letter-spacing: 0.5px; }
+    .title { font-size: 17px; font-weight: 800; letter-spacing: 1px; }
 
-    .header-controls { display: flex; align-items: center; gap: 12px; }
+    .header-controls { display: flex; align-items: center; gap: 10px; }
     .btn {
-      padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+      padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 700;
       border: none; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
     }
-    .btn-connect { background: #1e293b; color: var(--cyan); border: 1px solid var(--cyan); }
+    .btn-connect { background: #162032; color: var(--cyan); border: 1px solid var(--cyan); }
     .btn-connect:hover { background: var(--cyan); color: #000; box-shadow: 0 0 15px var(--cyan-glow); }
     .btn-connect.connected { background: var(--green); color: #000; border-color: var(--green); }
-    .btn-estop { background: var(--red); color: #fff; font-weight: 800; padding: 8px 24px; box-shadow: 0 0 15px var(--red-glow); }
+    .btn-estop { background: var(--red); color: #fff; font-weight: 800; padding: 8px 22px; box-shadow: 0 0 15px var(--red-glow); }
     .btn-estop:hover { background: #dc2626; transform: scale(1.02); }
     .btn-start { background: var(--green); color: #000; font-weight: 700; }
     .btn-start:hover { background: #059669; }
 
-    /* Grid Layout */
+    /* Main Grid */
     .dashboard-grid {
-      display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; margin-bottom: 16px;
+      display: grid; grid-template-columns: 1.15fr 1fr; gap: 14px; margin-bottom: 14px;
     }
-    @media (max-width: 1024px) { .dashboard-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 1080px) { .dashboard-grid { grid-template-columns: 1fr; } }
 
     .card {
       background: var(--card-bg); border: 1px solid var(--card-border);
-      border-radius: 12px; padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      border-radius: 12px; padding: 14px 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
     }
     .card-title {
-      font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
-      color: var(--text-muted); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--text-muted); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;
     }
 
-    /* U-Arch CAD Visualizer */
+    /* U-Arch SVG Visualizer */
     .uarch-container {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      position: relative; padding: 10px; background: rgba(15, 23, 42, 0.6); border-radius: 10px; border: 1px solid #1e293b;
+      position: relative; padding: 8px; background: rgba(10, 15, 26, 0.7); border-radius: 10px; border: 1px solid #1a2333;
     }
-    svg.uarch-svg { width: 100%; max-width: 520px; height: 260px; }
-    .sensor-node { transition: all 0.15s ease-out; cursor: pointer; }
-    .sensor-white { fill: #1e293b; stroke: #334155; stroke-width: 2; }
-    .sensor-black { fill: #10b981; stroke: #34d399; stroke-width: 3; filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.8)); }
-    .sensor-text { font-size: 9px; fill: #94a3b8; font-weight: 600; text-anchor: middle; }
-    .sensor-val { font-size: 8px; fill: #64748b; text-anchor: middle; }
+    svg.uarch-svg { width: 100%; max-width: 500px; height: 230px; }
+    .sensor-node { transition: all 0.12s ease-out; cursor: pointer; }
+    .sensor-white { fill: #131d2e; stroke: #334155; stroke-width: 0.8; }
+    .sensor-black { fill: #10b981; stroke: #34d399; stroke-width: 1.2; filter: drop-shadow(0 0 5px rgba(16, 185, 129, 0.9)); }
+    .sensor-text {
+      font-size: 3.2px; font-family: "JetBrains Mono", monospace; font-weight: 700;
+      fill: #94a3b8; text-anchor: middle; dominant-baseline: central; pointer-events: none;
+    }
+    .sensor-node:hover { stroke: #06b6d4; stroke-width: 1.2; }
 
-    /* Raw ADC Bars */
-    .bars-grid {
-      display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin-top: 12px; width: 100%;
+    /* Contiguous 16-Channel Raw ADC Bar Array */
+    .bars-container-title {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 10px; font-weight: 700; color: #64748b; margin-top: 10px; margin-bottom: 4px;
     }
-    .bar-col { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .bars-grid {
+      display: grid; grid-template-columns: repeat(16, 1fr); gap: 4px;
+      padding: 8px 6px; background: rgba(10, 14, 23, 0.6); border-radius: 8px; border: 1px solid #1a2333;
+    }
+    .bar-col { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .bar-value { font-size: 8px; font-family: "JetBrains Mono", monospace; font-weight: 700; color: var(--cyan); }
     .bar-track {
-      width: 100%; height: 90px; background: #0f172a; border-radius: 4px; border: 1px solid #1e293b;
+      width: 100%; height: 60px; background: #080c14; border-radius: 3px; border: 1px solid #1e293b;
       position: relative; overflow: hidden; display: flex; align-items: flex-end;
     }
-    .bar-fill {
-      width: 100%; background: linear-gradient(to top, #06b6d4, #10b981);
-      transition: height 0.1s linear; border-radius: 0 0 3px 3px;
+    /* Schmitt trigger 50% threshold indicator line */
+    .bar-track::after {
+      content: ""; position: absolute; top: 50%; left: 0; right: 0; height: 1px;
+      background: rgba(148, 163, 184, 0.2); border-top: 1px dashed rgba(148, 163, 184, 0.35);
     }
-    .bar-label { font-size: 9px; font-weight: 600; color: #94a3b8; }
-    .bar-value { font-size: 9px; font-family: monospace; color: var(--cyan); }
+    .bar-fill {
+      width: 100%; background: linear-gradient(to top, #0284c7, #06b6d4);
+      transition: height 0.08s ease-out;
+    }
+    .bar-fill.active {
+      background: linear-gradient(to top, #059669, #10b981);
+      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
+    }
+    .bar-label { font-size: 8px; font-weight: 700; font-family: "JetBrains Mono", monospace; color: #64748b; }
+    .bar-col.wing .bar-label { color: #c084fc; }
+    .bar-col.bevel .bar-label { color: #38bdf8; }
+    .bar-col.core .bar-label { color: #10b981; }
 
-    /* Telemetry Stats & Odometry */
+    /* Navigation Stats */
     .stats-row {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 12px;
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px;
     }
     .stat-box {
-      background: rgba(15, 23, 42, 0.7); border: 1px solid #1e293b; border-radius: 8px;
-      padding: 10px; text-align: center;
+      background: rgba(10, 15, 26, 0.7); border: 1px solid #1a2333; border-radius: 8px;
+      padding: 8px; text-align: center;
     }
-    .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; }
-    .stat-value { font-size: 18px; font-weight: 800; color: var(--cyan); }
+    .stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 3px; }
+    .stat-value { font-size: 16px; font-weight: 800; color: var(--cyan); font-family: "JetBrains Mono", monospace; }
 
     .state-badge {
-      display: inline-block; padding: 4px 12px; border-radius: 6px; font-weight: 800; font-size: 13px;
-      background: #1e293b; color: var(--cyan); border: 1px solid var(--cyan);
+      display: inline-block; padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 12px;
+      background: #162032; color: var(--cyan); border: 1px solid var(--cyan);
     }
     .badge-stopped { background: var(--red); color: #fff; border-color: var(--red); }
     .badge-normal { background: #064e3b; color: #34d399; border-color: #059669; }
 
-    /* Live PID Oscilloscope */
-    .canvas-container { width: 100%; height: 130px; position: relative; margin-top: 8px; }
-    canvas#pidChart {
-      width: 100%; height: 100%; background: #0a0f1d; border-radius: 8px; border: 1px solid #1e293b;
+    /* Course Deviation Gauge (Steering Needle) */
+    .deviation-card {
+      background: rgba(10, 15, 26, 0.7); border: 1px solid #1a2333; border-radius: 8px;
+      padding: 8px 12px; margin-bottom: 10px;
+    }
+    .deviation-header {
+      display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; color: #8492a6; margin-bottom: 5px;
+    }
+    .deviation-readout { color: var(--cyan); font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; }
+    .deviation-track {
+      position: relative; height: 14px; background: #090d16; border-radius: 4px;
+      border: 1px solid #1e293b; overflow: hidden; display: flex;
+    }
+    .dev-zone { height: 100%; opacity: 0.25; }
+    .dev-zone-danger-l, .dev-zone-danger-r { width: 27%; background: #ef4444; }
+    .dev-zone-warn-l, .dev-zone-warn-r     { width: 14%; background: #f59e0b; }
+    .dev-zone-good                        { width: 18%; background: #10b981; }
+    .dev-center-mark {
+      position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: #38bdf8; transform: translateX(-50%);
+    }
+    .dev-needle {
+      position: absolute; top: 0; bottom: 0; width: 6px; background: #f8fafc; border-radius: 2px;
+      transform: translateX(-50%); box-shadow: 0 0 8px #fff; transition: left 0.08s ease-out;
+    }
+    .deviation-scale {
+      display: flex; justify-content: space-between; font-size: 8px; font-family: monospace; color: #64748b; margin-top: 3px;
     }
 
-    /* Tuning Controls */
-    .controls-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px;
+    /* Autonomous Feature Flags Cluster */
+    .flags-card {
+      background: rgba(10, 15, 26, 0.7); border: 1px solid #1a2333; border-radius: 8px;
+      padding: 8px 12px; margin-bottom: 10px;
     }
+    .card-subtitle { font-size: 10px; font-weight: 800; color: #64748b; margin-bottom: 6px; letter-spacing: 0.5px; }
+    .flags-row { display: flex; gap: 6px; flex-wrap: wrap; }
+    .flag-badge {
+      font-size: 10px; font-weight: 800; font-family: "JetBrains Mono", monospace;
+      padding: 3px 8px; border-radius: 5px; background: #0f172a; color: #475569; border: 1px solid #1e293b;
+      transition: all 0.15s;
+    }
+    .flag-badge.active-wing { background: rgba(168, 85, 247, 0.2); color: #c084fc; border-color: #a855f7; box-shadow: 0 0 8px rgba(168, 85, 247, 0.5); }
+    .flag-badge.active-inv  { background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
+    .flag-badge.active-stop { background: rgba(239, 68, 68, 0.2);  color: #f87171; border-color: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.5); }
+
+    /* Live PID Oscilloscope */
+    .canvas-container { width: 100%; height: 150px; position: relative; margin-top: 6px; }
+    canvas#pidChart { width: 100%; height: 100%; background: #080c14; border-radius: 8px; border: 1px solid #1a2333; }
+
+    /* Bottom: Structurally Clustered Tuning Panel */
+    .tuning-sections { display: flex; flex-direction: column; gap: 12px; }
+    .tuning-cluster-title {
+      font-size: 11px; font-weight: 800; color: var(--cyan); letter-spacing: 0.8px;
+      margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+    }
+    .tuning-cluster-title::after { content: ""; flex: 1; height: 1px; background: #1a2333; }
+    .speeds-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .pid-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    @media (max-width: 1080px) {
+      .speeds-grid { grid-template-columns: repeat(2, 1fr); }
+      .pid-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 720px) {
+      .speeds-grid, .pid-grid { grid-template-columns: 1fr; }
+    }
+
     .control-item {
-      display: flex; flex-direction: column; gap: 6px; background: rgba(15, 23, 42, 0.6);
-      padding: 10px 14px; border-radius: 8px; border: 1px solid #1e293b;
+      display: flex; flex-direction: column; gap: 5px; background: rgba(10, 15, 26, 0.7);
+      padding: 8px 12px; border-radius: 8px; border: 1px solid #1a2333;
     }
-    .control-header { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: 600; }
-    .control-val { color: var(--cyan); font-family: monospace; font-size: 13px; font-weight: 700; }
+    .control-header { display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 700; color: #8492a6; }
+    .control-val { color: var(--cyan); font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; }
     input[type=range] {
-      -webkit-appearance: none; width: 100%; height: 6px; background: #1e293b; border-radius: 3px; outline: none;
+      -webkit-appearance: none; width: 100%; height: 5px; background: #1e293b; border-radius: 3px; outline: none;
     }
     input[type=range]::-webkit-slider-thumb {
-      -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--cyan); cursor: pointer; box-shadow: 0 0 8px var(--cyan-glow);
+      -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%; background: var(--cyan); cursor: pointer; box-shadow: 0 0 8px var(--cyan-glow);
     }
 
     /* Mode Toggles */
-    .mode-select-row {
-      display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
-    }
+    .mode-select-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
     .mode-pill {
-      flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a;
-      text-align: center; font-size: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+      flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid #1e293b; background: #0b111c;
+      text-align: center; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.2s;
     }
     .mode-pill:hover { border-color: var(--cyan); }
     .mode-pill.active { background: #0e7490; border-color: var(--cyan); color: #fff; box-shadow: 0 0 10px var(--cyan-glow); }
 
-    .bottom-actions {
-      display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap;
-    }
+    .bottom-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
     .btn-apply { background: var(--cyan); color: #000; font-weight: 700; }
     .btn-save { background: #059669; color: #fff; font-weight: 700; }
-    .btn-export { background: #475569; color: #fff; font-weight: 600; }
+    .btn-export { background: #334155; color: #fff; font-weight: 700; }
     .btn-apply:hover { background: #0891b2; }
     .btn-save:hover { background: #047857; box-shadow: 0 0 12px var(--green-glow); }
-    .btn-export:hover { background: #64748b; }
+    .btn-export:hover { background: #475569; }
 
     /* Export Modal */
     .modal {
       display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.8); z-index: 999; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.85); z-index: 999; align-items: center; justify-content: center;
     }
     .modal-content {
       background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px;
-      width: 90%; max-width: 600px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+      width: 90%; max-width: 580px; padding: 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.9);
     }
     textarea#exportText {
-      width: 100%; height: 260px; background: #0a0e17; color: #34d399; border: 1px solid #334155;
-      border-radius: 8px; padding: 10px; font-family: monospace; font-size: 12px; resize: none; margin: 12px 0;
+      width: 100%; height: 250px; background: #060910; color: #34d399; border: 1px solid #1e293b;
+      border-radius: 8px; padding: 10px; font-family: "JetBrains Mono", monospace; font-size: 11px; resize: none; margin: 10px 0;
     }
   </style>
 </head>
@@ -176,7 +248,7 @@
     <div class="logo-area">
       <div class="logo-badge">LFR v2.0</div>
       <div class="title">TELEMETRY COCKPIT</div>
-      <span id="connBadge" style="font-size: 11px; padding: 2px 8px; border-radius: 12px; background: #334155; color: #94a3b8;">DISCONNECTED</span>
+      <span id="connBadge" style="font-size: 11px; padding: 2px 8px; border-radius: 12px; background: #1e293b; color: #64748b;">DISCONNECTED</span>
     </div>
     <div class="header-controls">
       <button class="btn btn-connect" id="btnConnect">⚡ CONNECT USB</button>
@@ -199,53 +271,64 @@
       <div class="uarch-container">
         <svg class="uarch-svg" viewBox="-70 -65 140 80">
           <!-- PCB outline -->
-          <path d="M -60 -58 L -45 -58 L -45 -28 L -38 -15 L -35 0 L 35 0 L 38 -15 L 45 -28 L 45 -58 L 60 -58 L 60 8 L -60 8 Z"
-                fill="none" stroke="#1e293b" stroke-width="1.5" stroke-dasharray="3,3" />
+          <path d="M -60 -58 L -45 -58 L -45 -28 L -38 -15 L -35 0 L 35 0 L 38 -15 L 45 -28 L 45 -58 L 60 -58 L 60 11 L -60 11 Z"
+                fill="none" stroke="#1a2333" stroke-width="1.2" stroke-dasharray="2,2" />
 
-          <!-- Sensors: Wing Left (S00, S01), Bevel Left (S02, S03), Front 8 (S04..S11), Bevel Right (S12, S13), Wing Right (S14, S15) -->
-          <!-- Coordinates from final.dxf in mm -->
+          <!-- Forward orientation arrow -->
+          <text x="0" y="-28" font-size="3" fill="#334155" font-weight="700" text-anchor="middle">▲ FORWARD [Y+]</text>
+
+          <!-- Zone Indicators -->
+          <text x="-52.2" y="-60" font-size="2.6" fill="#c084fc" font-weight="700" text-anchor="middle">L-WING</text>
+          <text x="0"     y="8.5" font-size="2.6" fill="#10b981" font-weight="700" text-anchor="middle">FRONT 8 ROW</text>
+          <text x="52.2"  y="-60" font-size="2.6" fill="#c084fc" font-weight="700" text-anchor="middle">R-WING</text>
+
+          <!-- Sensors: exact CAD coordinates from final.dxf -->
           <g id="sensorsGroup">
-            <!-- S00 --> <circle id="s0" class="sensor-node sensor-white" cx="-52.2" cy="-54.6" r="4.5" />
-            <!-- S01 --> <circle id="s1" class="sensor-node sensor-white" cx="-52.2" cy="-39.6" r="4.5" />
-            <!-- S02 --> <circle id="s2" class="sensor-node sensor-white" cx="-52.2" cy="-24.6" r="4.5" />
-            <!-- S03 --> <circle id="s3" class="sensor-node sensor-white" cx="-43.6" cy="-12.3" r="4.5" />
-            <!-- S04 --> <circle id="s4" class="sensor-node sensor-white" cx="-35.0" cy="0.0" r="4.5" />
-            <!-- S05 --> <circle id="s5" class="sensor-node sensor-white" cx="-25.0" cy="0.0" r="4.5" />
-            <!-- S06 --> <circle id="s6" class="sensor-node sensor-white" cx="-15.0" cy="0.0" r="4.5" />
-            <!-- S07 --> <circle id="s7" class="sensor-node sensor-white" cx="-5.0"  cy="0.0" r="4.5" />
-            <!-- S08 --> <circle id="s8" class="sensor-node sensor-white" cx="5.0"   cy="0.0" r="4.5" />
-            <!-- S09 --> <circle id="s9" class="sensor-node sensor-white" cx="15.0"  cy="0.0" r="4.5" />
-            <!-- S10 --> <circle id="s10" class="sensor-node sensor-white" cx="25.0" cy="0.0" r="4.5" />
-            <!-- S11 --> <circle id="s11" class="sensor-node sensor-white" cx="35.0" cy="0.0" r="4.5" />
-            <!-- S12 --> <circle id="s12" class="sensor-node sensor-white" cx="43.6" cy="-12.3" r="4.5" />
-            <!-- S13 --> <circle id="s13" class="sensor-node sensor-white" cx="52.2" cy="-24.6" r="4.5" />
-            <!-- S14 --> <circle id="s14" class="sensor-node sensor-white" cx="52.2" cy="-39.6" r="4.5" />
-            <!-- S15 --> <circle id="s15" class="sensor-node sensor-white" cx="52.2" cy="-54.6" r="4.5" />
+            <!-- S00 --> <circle id="s0" class="sensor-node sensor-white" cx="-52.2" cy="-54.6" r="4.0"><title>S00: Left Wing Outer</title></circle>
+            <!-- S01 --> <circle id="s1" class="sensor-node sensor-white" cx="-52.2" cy="-39.6" r="4.0"><title>S01: Left Wing Inner</title></circle>
+            <!-- S02 --> <circle id="s2" class="sensor-node sensor-white" cx="-52.2" cy="-24.6" r="4.0"><title>S02: Left Bevel Rear</title></circle>
+            <!-- S03 --> <circle id="s3" class="sensor-node sensor-white" cx="-43.6" cy="-12.3" r="4.0"><title>S03: Left Bevel Front</title></circle>
+            <!-- S04 --> <circle id="s4" class="sensor-node sensor-white" cx="-35.0" cy="0.0"  r="4.0"><title>S04: Front Row L4</title></circle>
+            <!-- S05 --> <circle id="s5" class="sensor-node sensor-white" cx="-25.0" cy="0.0"  r="4.0"><title>S05: Front Row L3</title></circle>
+            <!-- S06 --> <circle id="s6" class="sensor-node sensor-white" cx="-15.0" cy="0.0"  r="4.0"><title>S06: Front Row L2</title></circle>
+            <!-- S07 --> <circle id="s7" class="sensor-node sensor-white" cx="-5.0"  cy="0.0"  r="4.0"><title>S07: Front Center L1</title></circle>
+            <!-- S08 --> <circle id="s8" class="sensor-node sensor-white" cx="5.0"   cy="0.0"  r="4.0"><title>S08: Front Center R1</title></circle>
+            <!-- S09 --> <circle id="s9" class="sensor-node sensor-white" cx="15.0"  cy="0.0"  r="4.0"><title>S09: Front Row R2</title></circle>
+            <!-- S10 --> <circle id="s10" class="sensor-node sensor-white" cx="25.0" cy="0.0"  r="4.0"><title>S10: Front Row R3</title></circle>
+            <!-- S11 --> <circle id="s11" class="sensor-node sensor-white" cx="35.0" cy="0.0"  r="4.0"><title>S11: Front Row R4</title></circle>
+            <!-- S12 --> <circle id="s12" class="sensor-node sensor-white" cx="43.6" cy="-12.3" r="4.0"><title>S12: Right Bevel Front</title></circle>
+            <!-- S13 --> <circle id="s13" class="sensor-node sensor-white" cx="52.2" cy="-24.6" r="4.0"><title>S13: Right Bevel Rear</title></circle>
+            <!-- S14 --> <circle id="s14" class="sensor-node sensor-white" cx="52.2" cy="-39.6" r="4.0"><title>S14: Right Wing Inner</title></circle>
+            <!-- S15 --> <circle id="s15" class="sensor-node sensor-white" cx="52.2" cy="-54.6" r="4.0"><title>S15: Right Wing Outer</title></circle>
 
-            <!-- Sensor Labels -->
-            <text x="-52.2" y="-54.0" class="sensor-text">00</text>
-            <text x="-52.2" y="-39.0" class="sensor-text">01</text>
-            <text x="-52.2" y="-24.0" class="sensor-text">02</text>
-            <text x="-43.6" y="-11.7" class="sensor-text">03</text>
-            <text x="-35.0" y="0.6" class="sensor-text">04</text>
-            <text x="-25.0" y="0.6" class="sensor-text">05</text>
-            <text x="-15.0" y="0.6" class="sensor-text">06</text>
-            <text x="-5.0"  y="0.6" class="sensor-text">07</text>
-            <text x="5.0"   y="0.6" class="sensor-text">08</text>
-            <text x="15.0"  y="0.6" class="sensor-text">09</text>
-            <text x="25.0"  y="0.6" class="sensor-text">10</text>
-            <text x="35.0"  y="0.6" class="sensor-text">11</text>
-            <text x="43.6"  y="-11.7" class="sensor-text">12</text>
-            <text x="52.2"  y="-24.0" class="sensor-text">13</text>
-            <text x="52.2"  y="-39.0" class="sensor-text">14</text>
-            <text x="52.2"  y="-54.0" class="sensor-text">15</text>
+            <!-- Precise centered labels -->
+            <text x="-52.2" y="-54.6" class="sensor-text">00</text>
+            <text x="-52.2" y="-39.6" class="sensor-text">01</text>
+            <text x="-52.2" y="-24.6" class="sensor-text">02</text>
+            <text x="-43.6" y="-12.3" class="sensor-text">03</text>
+            <text x="-35.0" y="0.0"   class="sensor-text">04</text>
+            <text x="-25.0" y="0.0"   class="sensor-text">05</text>
+            <text x="-15.0" y="0.0"   class="sensor-text">06</text>
+            <text x="-5.0"  y="0.0"   class="sensor-text">07</text>
+            <text x="5.0"   y="0.0"   class="sensor-text">08</text>
+            <text x="15.0"  y="0.0"   class="sensor-text">09</text>
+            <text x="25.0"  y="0.0"   class="sensor-text">10</text>
+            <text x="35.0"  y="0.0"   class="sensor-text">11</text>
+            <text x="43.6"  y="-12.3" class="sensor-text">12</text>
+            <text x="52.2"  y="-24.6" class="sensor-text">13</text>
+            <text x="52.2"  y="-39.6" class="sensor-text">14</text>
+            <text x="52.2"  y="-54.6" class="sensor-text">15</text>
           </g>
         </svg>
       </div>
 
-      <!-- Raw ADC Bars (16 Channels) -->
+      <!-- Raw ADC Bars (Contiguous 16-Channel Array) -->
+      <div class="bars-container-title">
+        <span>16-CHANNEL RAW ADC SPECTRUM (0 – 4095)</span>
+        <span style="color: #64748b;">DASH: 50% SCHMITT THRESHOLD</span>
+      </div>
       <div class="bars-grid" id="barsGrid">
-        <!-- Generated by JS -->
+        <!-- Generated dynamically by JS in single 16-column continuous row -->
       </div>
     </div>
 
@@ -253,6 +336,7 @@
     <div class="card">
       <div class="card-title">Live Navigation & Odometry</div>
 
+      <!-- Stats row -->
       <div class="stats-row">
         <div class="stat-box">
           <div class="stat-label">Robot State</div>
@@ -260,7 +344,7 @@
         </div>
         <div class="stat-box">
           <div class="stat-label">Centroid Error</div>
-          <div class="stat-value" id="valError">0 mm</div>
+          <div class="stat-value" id="valError">0.0 mm</div>
         </div>
         <div class="stat-box">
           <div class="stat-label">Left Enc</div>
@@ -272,7 +356,44 @@
         </div>
       </div>
 
-      <div class="card-title" style="margin-top: 14px;">
+      <!-- Steering Course Deviation Needle -->
+      <div class="deviation-card">
+        <div class="deviation-header">
+          <span>COURSE DEVIATION (CROSS-TRACK ERROR)</span>
+          <span id="deviationValText" class="deviation-readout">0.0 mm</span>
+        </div>
+        <div class="deviation-track">
+          <div class="dev-zone dev-zone-danger-l"></div>
+          <div class="dev-zone dev-zone-warn-l"></div>
+          <div class="dev-zone dev-zone-good"></div>
+          <div class="dev-zone dev-zone-warn-r"></div>
+          <div class="dev-zone dev-zone-danger-r"></div>
+          <div class="dev-center-mark"></div>
+          <div class="dev-needle" id="devNeedle" style="left: 50%;"></div>
+        </div>
+        <div class="deviation-scale">
+          <span>-55 mm</span>
+          <span>-25</span>
+          <span>0</span>
+          <span>+25</span>
+          <span>+55 mm</span>
+        </div>
+      </div>
+
+      <!-- Autonomous Feature Flags Cluster -->
+      <div class="flags-card">
+        <div class="card-subtitle">AUTONOMOUS FEATURE FLAGS & LATCHES</div>
+        <div class="flags-row">
+          <div class="flag-badge" id="flagLWing">L-WING [90°]</div>
+          <div class="flag-badge" id="flagRWing">R-WING [90°]</div>
+          <div class="flag-badge" id="flagInverted">INVERTED ZONE</div>
+          <div class="flag-badge" id="flagBench">BENCH DIAG</div>
+          <div class="flag-badge" id="flagEStop">E-STOP</div>
+        </div>
+      </div>
+
+      <!-- Oscilloscope -->
+      <div class="card-title" style="margin-top: 10px;">
         <span>Real-Time PID Error Waveform</span>
         <span style="font-size: 11px; color: var(--text-muted);">±55.0 mm Range</span>
       </div>
@@ -283,7 +404,7 @@
 
   </div>
 
-  <!-- Bottom: Control & Tuning Panel -->
+  <!-- Bottom: Structured Parameters Tuning Panel -->
   <div class="card">
     <div class="card-title">Robot Modes & Dynamic Parameters Tuning</div>
 
@@ -295,35 +416,47 @@
       <div class="mode-pill" id="toggleInv" style="border-style: dashed;">INVERTED ZONE: OFF</div>
     </div>
 
-    <!-- Tuning Sliders -->
-    <div class="controls-grid">
-      <div class="control-item">
-        <div class="control-header"><span>BASE SPEED</span><span class="control-val" id="valBase">140</span></div>
-        <input type="range" id="sliderBase" min="60" max="255" value="140">
+    <div class="tuning-sections">
+      <!-- Velocity Dynamics -->
+      <div>
+        <div class="tuning-cluster-title">🏎️ VELOCITY & CORNERING PROFILE</div>
+        <div class="speeds-grid">
+          <div class="control-item">
+            <div class="control-header"><span>BASE SPEED</span><span class="control-val" id="valBase">140</span></div>
+            <input type="range" id="sliderBase" min="60" max="255" value="140">
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span>MIN SPEED (CORNERS)</span><span class="control-val" id="valMin">80</span></div>
+            <input type="range" id="sliderMin" min="40" max="200" value="80">
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span>MAX SPEED (BURST)</span><span class="control-val" id="valMax">220</span></div>
+            <input type="range" id="sliderMax" min="100" max="255" value="220">
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span>TURN SPEED (PIVOT)</span><span class="control-val" id="valTurn">120</span></div>
+            <input type="range" id="sliderTurn" min="60" max="220" value="120">
+          </div>
+        </div>
       </div>
-      <div class="control-item">
-        <div class="control-header"><span>MIN SPEED (CORNERS)</span><span class="control-val" id="valMin">80</span></div>
-        <input type="range" id="sliderMin" min="40" max="200" value="80">
-      </div>
-      <div class="control-item">
-        <div class="control-header"><span>MAX SPEED (BURST)</span><span class="control-val" id="valMax">220</span></div>
-        <input type="range" id="sliderMax" min="100" max="255" value="220">
-      </div>
-      <div class="control-item">
-        <div class="control-header"><span>TURN SPEED (PIVOT)</span><span class="control-val" id="valTurn">120</span></div>
-        <input type="range" id="sliderTurn" min="60" max="220" value="120">
-      </div>
-      <div class="control-item">
-        <div class="control-header"><span>PID KP GAIN</span><span class="control-val" id="valKp">0.045</span></div>
-        <input type="range" id="sliderKp" min="0.010" max="0.150" step="0.001" value="0.045">
-      </div>
-      <div class="control-item">
-        <div class="control-header"><span>PID KD GAIN</span><span class="control-val" id="valKd">0.280</span></div>
-        <input type="range" id="sliderKd" min="0.050" max="0.800" step="0.005" value="0.280">
-      </div>
-      <div class="control-item">
-        <div class="control-header"><span>ENCODER KP GAIN</span><span class="control-val" id="valEncKp">2.0</span></div>
-        <input type="range" id="sliderEncKp" min="0.5" max="5.0" step="0.1" value="2.0">
+
+      <!-- Closed-Loop Feedback Dynamics -->
+      <div>
+        <div class="tuning-cluster-title">🎯 CLOSED-LOOP PID & ODOMETRY DYNAMICS</div>
+        <div class="pid-grid">
+          <div class="control-item">
+            <div class="control-header"><span>PID KP GAIN</span><span class="control-val" id="valKp">0.045</span></div>
+            <input type="range" id="sliderKp" min="0.010" max="0.150" step="0.001" value="0.045">
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span>PID KD GAIN</span><span class="control-val" id="valKd">0.280</span></div>
+            <input type="range" id="sliderKd" min="0.050" max="0.800" step="0.005" value="0.280">
+          </div>
+          <div class="control-item">
+            <div class="control-header"><span>ENCODER KP GAIN</span><span class="control-val" id="valEncKp">2.0</span></div>
+            <input type="range" id="sliderEncKp" min="0.5" max="5.0" step="0.1" value="2.0">
+          </div>
+        </div>
       </div>
     </div>
 
@@ -331,7 +464,7 @@
     <div class="bottom-actions">
       <button class="btn btn-apply" id="btnApply">⚡ SEND LIVE TUNINGS</button>
       <button class="btn btn-save" id="btnSave">💾 SAVE TO FLASH (NVS)</button>
-      <button class="btn" style="background:#334155; color:#fff;" id="btnResetEnc">🔄 RESET ENCODERS</button>
+      <button class="btn" style="background:#1e293b; color:#fff;" id="btnResetEnc">🔄 RESET ENCODERS</button>
       <button class="btn btn-export" id="btnExport">📋 EXPORT CONFIG.H</button>
     </div>
   </div>
@@ -340,10 +473,10 @@
   <div class="modal" id="exportModal">
     <div class="modal-content">
       <div class="card-title">Generated config.h C++ Code</div>
-      <p style="font-size: 12px; color: var(--text-muted);">Copy and paste these parameters directly into include/config.h:</p>
+      <p style="font-size: 11px; color: var(--text-muted);">Copy and paste these parameters directly into include/config.h:</p>
       <textarea id="exportText" readonly></textarea>
-      <div style="display: flex; justify-content: flex-end; gap: 10px;">
-        <button class="btn" style="background:#334155; color:#fff;" id="btnCloseModal">Close</button>
+      <div style="display: flex; justify-content: flex-end; gap: 8px;">
+        <button class="btn" style="background:#1e293b; color:#fff;" id="btnCloseModal">Close</button>
         <button class="btn btn-apply" id="btnCopyCode">Copy to Clipboard</button>
       </div>
     </div>
@@ -351,11 +484,15 @@
 
   <!-- JavaScript Logic -->
   <script>
-    //generate 16 ADC bars
+    //generate contiguous 16-column ADC bar array with zone tags
     const barsGrid = document.getElementById('barsGrid');
     for (let i = 0; i < 16; i++) {
       const col = document.createElement('div');
-      col.className = 'bar-col';
+      let zoneClass = "core";
+      if (i === 0 || i === 1 || i === 14 || i === 15) zoneClass = "wing";
+      else if (i === 2 || i === 3 || i === 12 || i === 13) zoneClass = "bevel";
+
+      col.className = `bar-col ${zoneClass}`;
       col.innerHTML = `
         <div class="bar-value" id="adcVal${i}">0</div>
         <div class="bar-track"><div class="bar-fill" id="adcBar${i}" style="height: 0%;"></div></div>
@@ -366,8 +503,6 @@
 
     //webserial communication
     let port = null;
-    let reader = null;
-    let writer = null;
     let readLoopActive = false;
     let rxCount = 0;
     let lastRxTime = performance.now();
@@ -420,7 +555,7 @@
           if (value) {
             buffer += value;
             let lines = buffer.split("\n");
-            buffer = lines.pop(); //keep incomplete trailing piece
+            buffer = lines.pop(); //keep trailing piece
 
             for (const line of lines) {
               const clean = line.trim();
@@ -441,7 +576,7 @@
     }
 
     //oscilloscope buffer
-    const errorHistory = new Array(200).fill(0);
+    const errorHistory = new Array(220).fill(0);
     const canvas = document.getElementById('pidChart');
     const ctx = canvas.getContext('2d');
 
@@ -451,17 +586,29 @@
 
       ctx.clearRect(0, 0, w, h);
 
-      //center zero line
-      ctx.strokeStyle = '#1e293b';
+      //grid lines
+      ctx.strokeStyle = '#121a29';
       ctx.lineWidth = 1;
+      for (let y = h / 4; y < h; y += h / 4) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+
+      //center zero line
+      ctx.strokeStyle = '#1e2d44';
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(0, h / 2);
       ctx.lineTo(w, h / 2);
       ctx.stroke();
 
-      //error line
+      //error wave
       ctx.strokeStyle = '#06b6d4';
       ctx.lineWidth = 2;
+      ctx.shadowColor = 'rgba(6, 182, 212, 0.6)';
+      ctx.shadowBlur = 6;
       ctx.beginPath();
 
       const step = w / (errorHistory.length - 1);
@@ -473,6 +620,7 @@
         else ctx.lineTo(i * step, y);
       }
       ctx.stroke();
+      ctx.shadowBlur = 0;
     }
 
     //handle incoming telemetry packet
@@ -487,7 +635,7 @@
         lastRxTime = now;
       }
 
-      //update 16 sensors
+      //update 16 sensors on SVG and ADC bars
       const mask = data.mask || 0;
       for (let i = 0; i < 16; i++) {
         const isBlack = (mask & (1 << i)) !== 0;
@@ -499,13 +647,16 @@
         const raw = data.adc ? data.adc[i] : 0;
         const bar = document.getElementById(`adcBar${i}`);
         const valText = document.getElementById(`adcVal${i}`);
-        if (bar) bar.style.height = `${Math.min(100, (raw / 4095) * 100)}%`;
+        if (bar) {
+          bar.style.height = `${Math.min(100, (raw / 4095) * 100)}%`;
+          bar.classList.toggle('active', isBlack);
+        }
         if (valText) valText.textContent = raw;
       }
 
       //update odometry & state
-      const errMm = (data.err / 100).toFixed(1);
-      document.getElementById('valError').textContent = `${errMm} mm`;
+      const errMm = data.err / 100;
+      document.getElementById('valError').textContent = `${errMm > 0 ? '+' : ''}${errMm.toFixed(1)} mm`;
       document.getElementById('valLeftEnc').textContent = data.l;
       document.getElementById('valRightEnc').textContent = data.r;
 
@@ -516,6 +667,22 @@
       } else {
         stateBadge.className = "state-badge badge-normal";
       }
+
+      //steering needle (-55mm to +55mm mapped to 0% to 100%)
+      const clampedErr = Math.max(-55, Math.min(55, errMm));
+      const pct = ((clampedErr + 55) / 110) * 100;
+      const needle = document.getElementById('devNeedle');
+      if (needle) needle.style.left = `${pct}%`;
+      const devText = document.getElementById('deviationValText');
+      if (devText) devText.textContent = `${errMm > 0 ? '+' : ''}${errMm.toFixed(1)} mm`;
+
+      //feature flags: bit0=bench, bit1=mtest, bit2=inv, bit3=estop, bit4=lwing, bit5=rwing
+      const flags = data.flags || 0;
+      document.getElementById('flagLWing').classList.toggle('active-wing', (flags & 0x10) !== 0);
+      document.getElementById('flagRWing').classList.toggle('active-wing', (flags & 0x20) !== 0);
+      document.getElementById('flagInverted').classList.toggle('active-inv', (flags & 0x04) !== 0);
+      document.getElementById('flagBench').classList.toggle('active-inv', (flags & 0x01) !== 0);
+      document.getElementById('flagEStop').classList.toggle('active-stop', (flags & 0x08) !== 0);
 
       //update chart
       errorHistory.push(data.err);
