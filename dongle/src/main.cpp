@@ -32,8 +32,10 @@ struct CommandPacket {
 };
 #pragma pack(pop)
 
-static uint8_t lfrMac[6] = {0};
-static bool lfrKnown = false;
+//hardcoded lfr robot mac address (b4:bf:e9:0f:13:c0)
+static const uint8_t DEFAULT_LFR_MAC[6] = {0xB4, 0xBF, 0xE9, 0x0F, 0x13, 0xC0};
+static uint8_t lfrMac[6] = {0xB4, 0xBF, 0xE9, 0x0F, 0x13, 0xC0};
+static bool lfrKnown = true;
 static String serialRxBuf = "";
 
 static uint8_t calcChecksum(const uint8_t *data, size_t len) {
@@ -197,7 +199,10 @@ void setup() {
 
     esp_now_register_recv_cb(onDataRecv);
 
-    Serial.println("{\"t\":\"ready\",\"dongle\":\"LFR USB-ESP Bridge Ready\"}");
+    //pre-register lfr robot peer (b4:bf:e9:0f:13:c0)
+    registerLfrPeer(DEFAULT_LFR_MAC);
+
+    Serial.println("{\"t\":\"ready\",\"dongle\":\"LFR USB-ESP Bridge Ready (Peer: b4:bf:e9:0f:13:c0)\"}");
 }
 
 void loop() {

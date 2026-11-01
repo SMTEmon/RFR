@@ -267,57 +267,64 @@
         <span id="rateLabel" style="font-size: 11px; color: var(--cyan);">0 Hz</span>
       </div>
 
-      <!-- SVG Rendering of the U-Arch PCB -->
+      <!-- SVG Rendering of the U-Arch PCB (Forward is UP / Leading Edge) -->
       <div class="uarch-container">
-        <svg class="uarch-svg" viewBox="-70 -65 140 80">
-          <!-- PCB outline -->
-          <path d="M -60 -58 L -45 -58 L -45 -28 L -38 -15 L -35 0 L 35 0 L 38 -15 L 45 -28 L 45 -58 L 60 -58 L 60 11 L -60 11 Z"
+        <svg class="uarch-svg" viewBox="-70 -44 140 88">
+          <!-- PCB outline (U-Arch opens downwards towards wheels, front edge is at the top) -->
+          <path d="M -60 38 L -60 -28 L 60 -28 L 60 38 L 45 38 L 45 8 L 38 -5 L 35 -15 L -35 -15 L -38 -5 L -45 8 L -45 38 Z"
                 fill="none" stroke="#1a2333" stroke-width="1.2" stroke-dasharray="2,2" />
 
-          <!-- Forward orientation arrow -->
-          <text x="0" y="-28" font-size="3" fill="#334155" font-weight="700" text-anchor="middle">▲ FORWARD [Y+]</text>
+          <!-- Forward orientation arrow & labels -->
+          <text x="0" y="-36" font-size="3.2" fill="#38bdf8" font-weight="800" text-anchor="middle">▲ FORWARD (DIRECTION OF TRAVEL)</text>
+          <text x="0" y="-29" font-size="2.6" fill="#10b981" font-weight="700" text-anchor="middle">FRONT 8 SENSOR ROW</text>
 
           <!-- Zone Indicators -->
-          <text x="-52.2" y="-60" font-size="2.6" fill="#c084fc" font-weight="700" text-anchor="middle">L-WING</text>
-          <text x="0"     y="8.5" font-size="2.6" fill="#10b981" font-weight="700" text-anchor="middle">FRONT 8 ROW</text>
-          <text x="52.2"  y="-60" font-size="2.6" fill="#c084fc" font-weight="700" text-anchor="middle">R-WING</text>
+          <text x="-52.2" y="39" font-size="2.6" fill="#c084fc" font-weight="700" text-anchor="middle">L-WING</text>
+          <text x="52.2"  y="39" font-size="2.6" fill="#c084fc" font-weight="700" text-anchor="middle">R-WING</text>
 
-          <!-- Sensors: exact CAD coordinates from final.dxf -->
+          <!-- Sensors: exact CAD coordinates with Forward UP -->
           <g id="sensorsGroup">
-            <!-- S00 --> <circle id="s0" class="sensor-node sensor-white" cx="-52.2" cy="-54.6" r="4.0"><title>S00: Left Wing Outer</title></circle>
-            <!-- S01 --> <circle id="s1" class="sensor-node sensor-white" cx="-52.2" cy="-39.6" r="4.0"><title>S01: Left Wing Inner</title></circle>
-            <!-- S02 --> <circle id="s2" class="sensor-node sensor-white" cx="-52.2" cy="-24.6" r="4.0"><title>S02: Left Bevel Rear</title></circle>
-            <!-- S03 --> <circle id="s3" class="sensor-node sensor-white" cx="-43.6" cy="-12.3" r="4.0"><title>S03: Left Bevel Front</title></circle>
-            <!-- S04 --> <circle id="s4" class="sensor-node sensor-white" cx="-35.0" cy="0.0"  r="4.0"><title>S04: Front Row L4</title></circle>
-            <!-- S05 --> <circle id="s5" class="sensor-node sensor-white" cx="-25.0" cy="0.0"  r="4.0"><title>S05: Front Row L3</title></circle>
-            <!-- S06 --> <circle id="s6" class="sensor-node sensor-white" cx="-15.0" cy="0.0"  r="4.0"><title>S06: Front Row L2</title></circle>
-            <!-- S07 --> <circle id="s7" class="sensor-node sensor-white" cx="-5.0"  cy="0.0"  r="4.0"><title>S07: Front Center L1</title></circle>
-            <!-- S08 --> <circle id="s8" class="sensor-node sensor-white" cx="5.0"   cy="0.0"  r="4.0"><title>S08: Front Center R1</title></circle>
-            <!-- S09 --> <circle id="s9" class="sensor-node sensor-white" cx="15.0"  cy="0.0"  r="4.0"><title>S09: Front Row R2</title></circle>
-            <!-- S10 --> <circle id="s10" class="sensor-node sensor-white" cx="25.0" cy="0.0"  r="4.0"><title>S10: Front Row R3</title></circle>
-            <!-- S11 --> <circle id="s11" class="sensor-node sensor-white" cx="35.0" cy="0.0"  r="4.0"><title>S11: Front Row R4</title></circle>
-            <!-- S12 --> <circle id="s12" class="sensor-node sensor-white" cx="43.6" cy="-12.3" r="4.0"><title>S12: Right Bevel Front</title></circle>
-            <!-- S13 --> <circle id="s13" class="sensor-node sensor-white" cx="52.2" cy="-24.6" r="4.0"><title>S13: Right Bevel Rear</title></circle>
-            <!-- S14 --> <circle id="s14" class="sensor-node sensor-white" cx="52.2" cy="-39.6" r="4.0"><title>S14: Right Wing Inner</title></circle>
-            <!-- S15 --> <circle id="s15" class="sensor-node sensor-white" cx="52.2" cy="-54.6" r="4.0"><title>S15: Right Wing Outer</title></circle>
+            <!-- Front 8 Row (Leading forward edge, Y = -22.0) -->
+            <!-- S04 --> <circle id="s4" class="sensor-node sensor-white" cx="-35.0" cy="-22.0" r="4.0"><title>S04: Front Row L4</title></circle>
+            <!-- S05 --> <circle id="s5" class="sensor-node sensor-white" cx="-25.0" cy="-22.0" r="4.0"><title>S05: Front Row L3</title></circle>
+            <!-- S06 --> <circle id="s6" class="sensor-node sensor-white" cx="-15.0" cy="-22.0" r="4.0"><title>S06: Front Row L2</title></circle>
+            <!-- S07 --> <circle id="s7" class="sensor-node sensor-white" cx="-5.0"  cy="-22.0" r="4.0"><title>S07: Front Center L1</title></circle>
+            <!-- S08 --> <circle id="s8" class="sensor-node sensor-white" cx="5.0"   cy="-22.0" r="4.0"><title>S08: Front Center R1</title></circle>
+            <!-- S09 --> <circle id="s9" class="sensor-node sensor-white" cx="15.0"  cy="-22.0" r="4.0"><title>S09: Front Row R2</title></circle>
+            <!-- S10 --> <circle id="s10" class="sensor-node sensor-white" cx="25.0" cy="-22.0" r="4.0"><title>S10: Front Row R3</title></circle>
+            <!-- S11 --> <circle id="s11" class="sensor-node sensor-white" cx="35.0" cy="-22.0" r="4.0"><title>S11: Front Row R4</title></circle>
 
-            <!-- Precise centered labels -->
-            <text x="-52.2" y="-54.6" class="sensor-text">00</text>
-            <text x="-52.2" y="-39.6" class="sensor-text">01</text>
-            <text x="-52.2" y="-24.6" class="sensor-text">02</text>
-            <text x="-43.6" y="-12.3" class="sensor-text">03</text>
-            <text x="-35.0" y="0.0"   class="sensor-text">04</text>
-            <text x="-25.0" y="0.0"   class="sensor-text">05</text>
-            <text x="-15.0" y="0.0"   class="sensor-text">06</text>
-            <text x="-5.0"  y="0.0"   class="sensor-text">07</text>
-            <text x="5.0"   y="0.0"   class="sensor-text">08</text>
-            <text x="15.0"  y="0.0"   class="sensor-text">09</text>
-            <text x="25.0"  y="0.0"   class="sensor-text">10</text>
-            <text x="35.0"  y="0.0"   class="sensor-text">11</text>
-            <text x="43.6"  y="-12.3" class="sensor-text">12</text>
-            <text x="52.2"  y="-24.6" class="sensor-text">13</text>
-            <text x="52.2"  y="-39.6" class="sensor-text">14</text>
-            <text x="52.2"  y="-54.6" class="sensor-text">15</text>
+            <!-- Bevels (Angled back towards rear) -->
+            <!-- S03 --> <circle id="s3"  class="sensor-node sensor-white" cx="-43.6" cy="-9.7" r="4.0"><title>S03: Left Bevel Front</title></circle>
+            <!-- S12 --> <circle id="s12" class="sensor-node sensor-white" cx="43.6"  cy="-9.7" r="4.0"><title>S12: Right Bevel Front</title></circle>
+            <!-- S02 --> <circle id="s2"  class="sensor-node sensor-white" cx="-52.2" cy="2.6"  r="4.0"><title>S02: Left Bevel Rear</title></circle>
+            <!-- S13 --> <circle id="s13" class="sensor-node sensor-white" cx="52.2"  cy="2.6"  r="4.0"><title>S13: Right Bevel Rear</title></circle>
+
+            <!-- Wings (Trailing flanks towards rear) -->
+            <!-- S01 --> <circle id="s1"  class="sensor-node sensor-white" cx="-52.2" cy="17.6" r="4.0"><title>S01: Left Wing Inner</title></circle>
+            <!-- S14 --> <circle id="s14" class="sensor-node sensor-white" cx="52.2"  cy="17.6" r="4.0"><title>S14: Right Wing Inner</title></circle>
+            <!-- S00 --> <circle id="s0"  class="sensor-node sensor-white" cx="-52.2" cy="32.6" r="4.0"><title>S00: Left Wing Outer</title></circle>
+            <!-- S15 --> <circle id="s15" class="sensor-node sensor-white" cx="52.2"  cy="32.6" r="4.0"><title>S15: Right Wing Outer</title></circle>
+
+            <!-- Sensor Numeric Labels -->
+            <text x="-35.0" y="-22.0" class="sensor-text">04</text>
+            <text x="-25.0" y="-22.0" class="sensor-text">05</text>
+            <text x="-15.0" y="-22.0" class="sensor-text">06</text>
+            <text x="-5.0"  y="-22.0" class="sensor-text">07</text>
+            <text x="5.0"   y="-22.0" class="sensor-text">08</text>
+            <text x="15.0"  y="-22.0" class="sensor-text">09</text>
+            <text x="25.0"  y="-22.0" class="sensor-text">10</text>
+            <text x="35.0"  y="-22.0" class="sensor-text">11</text>
+
+            <text x="-43.6" y="-9.7"  class="sensor-text">03</text>
+            <text x="43.6"  y="-9.7"  class="sensor-text">12</text>
+            <text x="-52.2" y="2.6"   class="sensor-text">02</text>
+            <text x="52.2"  y="2.6"   class="sensor-text">13</text>
+
+            <text x="-52.2" y="17.6"  class="sensor-text">01</text>
+            <text x="52.2"  y="17.6"  class="sensor-text">14</text>
+            <text x="-52.2" y="32.6"  class="sensor-text">00</text>
+            <text x="52.2"  y="32.6"  class="sensor-text">15</text>
           </g>
         </svg>
       </div>
