@@ -3,6 +3,7 @@
 #include "sensors.h"
 #include "motors.h"
 #include "encoders.h"
+#include "telemetry.h"
 
 static NavState currentState = STATE_START_EXIT;
 static TurnDir latchedDir = DIR_NONE;
@@ -39,6 +40,13 @@ const char* getNavStateName() {
 }
 
 void navigatorUpdate() {
+    //bail out immediately if emergency stopped
+    if (g_emergencyStop) {
+        shortBrake();
+        motorsArm(false);
+        return;
+    }
+
     //read sensors with current polarity mode
     sensorsRead(invertedActive);
 
@@ -49,8 +57,8 @@ void navigatorUpdate() {
     switch (currentState) {
         case STATE_START_EXIT: {
             //blind straight exit out of #31 start box
-            int16_t diff = static_cast<int16_t>(ENC_KP * (leftEnc - rightEnc));
-            drive(BASE_SPEED - diff, BASE_SPEED + diff);
+            int16_t diff = static_cast<int16_t>(g_cfg.encKp * (leftEnc - rightEnc));
+            drive(g_cfg.baseSpeed - diff, g_cfg.baseSpeed + diff);
 
             //transition once out of solid black box and line is centered
             if (currentTicks >= START_EXIT_TICKS && hasLine() && !isAllBlack()) {
@@ -78,7 +86,7 @@ void navigatorUpdate() {
             }
 
             //check for entry into #29 inverted zone
-            if (ENABLE_INVERTED_ZONE && isInvertedPattern()) {
+            if (g_cfg.enableInverted && isInvertedPattern()) {
                 invertedActive = true;
                 currentState = STATE_INVERTED_PID;
                 break;
@@ -109,12 +117,12 @@ void navigatorUpdate() {
             float dError = static_cast<float>(error - prevError) / (LOOP_INTERVAL_US * 1e-6f);
             prevError = error;
 
-            int16_t correction = static_cast<int16_t>(PID_KP * error + PID_KD * dError * 0.001f);
+            int16_t correction = static_cast<int16_t>(g_cfg.pidKp * error + g_cfg.pidKd * dError * 0.001f);
 
             //slow down on sharp curves
-            int16_t speed = BASE_SPEED;
+            int16_t speed = g_cfg.baseSpeed;
             if (abs(error) > 2000) {
-                speed = MIN_SPEED;
+                speed = g_cfg.minSpeed;
             }
 
             drive(speed + correction, speed - correction);
@@ -135,17 +143,17 @@ void navigatorUpdate() {
             float dError = static_cast<float>(error - prevError) / (LOOP_INTERVAL_US * 1e-6f);
             prevError = error;
 
-            int16_t correction = static_cast<int16_t>(PID_KP * error + PID_KD * dError * 0.001f);
-            drive(BASE_SPEED + correction, BASE_SPEED - correction);
+            int16_t correction = static_cast<int16_t>(g_cfg.pidKp * error + g_cfg.pidKd * dError * 0.001f);
+            drive(g_cfg.baseSpeed + correction, g_cfg.baseSpeed - correction);
             break;
         }
 
         case STATE_SHARP_TURN: {
             //execute zero radius spin in latched direction
             if (latchedDir == DIR_LEFT) {
-                drive(-TURN_SPEED, TURN_SPEED);
+                drive(-g_cfg.turnSpeed, g_cfg.turnSpeed);
             } else {
-                drive(TURN_SPEED, -TURN_SPEED);
+                drive(g_cfg.turnSpeed, -g_cfg.turnSpeed);
             }
 
             //re-lock line on center sensors
@@ -158,8 +166,8 @@ void navigatorUpdate() {
 
         case STATE_GAP_OR_DEADEND: {
             //hold straight heading using encoders
-            int16_t diff = static_cast<int16_t>(ENC_KP * (leftEnc - rightEnc));
-            drive(MIN_SPEED - diff, MIN_SPEED + diff);
+            int16_t diff = static_cast<int16_t>(g_cfg.encKp * (leftEnc - rightEnc));
+            drive(g_cfg.minSpeed - diff, g_cfg.minSpeed + diff);
 
             //line found within gap limit
             if (hasLine()) {
@@ -176,7 +184,7 @@ void navigatorUpdate() {
 
         case STATE_UTURN_180: {
             //spin 180 degrees left
-            drive(-TURN_SPEED, TURN_SPEED);
+            drive(-g_cfg.turnSpeed, g_cfg.turnSpeed);
 
             //re-lock line once spun around
             if (hasLine() && (currentTicks - gapStartTicks > UTURN_180_TICKS)) {
@@ -188,8 +196,8 @@ void navigatorUpdate() {
 
         case STATE_ALL_BLACK_CHECK: {
             //creep forward to confirm feature type
-            int16_t diff = static_cast<int16_t>(ENC_KP * (leftEnc - rightEnc));
-            drive(MIN_SPEED - diff, MIN_SPEED + diff);
+            int16_t diff = static_cast<int16_t>(g_cfg.encKp * (leftEnc - rightEnc));
+            drive(g_cfg.minSpeed - diff, g_cfg.minSpeed + diff);
 
             int32_t distance = currentTicks - checkStartTicks;
 

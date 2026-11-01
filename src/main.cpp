@@ -4,6 +4,7 @@
 #include "encoders.h"
 #include "sensors.h"
 #include "navigator.h"
+#include "telemetry.h"
 
 static uint32_t lastLoopMicros = 0;
 static uint32_t lastPrintMillis = 0;
@@ -117,16 +118,19 @@ void setup() {
     encodersInit();
     sensorsInit();
 
+    //setup esp-now wireless telemetry and nvs config
+    telemetryInit();
+
     Serial.println("--- LFR Booting ---");
 
-    if (BENCH_DEBUG_MODE) {
+    if (g_cfg.benchDebugMode) {
         Serial.println("==================================================");
         Serial.println("BENCH DIAGNOSTIC MODE ACTIVE (Motors Safe)");
         Serial.println("Slide black tape across sensors to see [ # . ] map");
         Serial.println("Rotate wheels by hand to check L/R encoder counts");
         Serial.println("==================================================");
         sensorsCalibrate();
-    } else if (MOTOR_TEST_MODE) {
+    } else if (g_cfg.motorTestMode) {
         Serial.println("==================================================");
         Serial.println("OPEN-LOOP MOTOR TEST ACTIVE");
         Serial.println("Cycle: Left (2.5s) -> Right (2.5s) -> Both (2.5s) -> Stop (2.5s)");
@@ -156,8 +160,18 @@ void setup() {
 }
 
 void loop() {
+    //broadcast telemetry packet to dongle at 25hz
+    telemetryUpdate();
+
+    //emergency stop kills motor drive immediately
+    if (g_emergencyStop) {
+        shortBrake();
+        motorsArm(false);
+        return;
+    }
+
     //bench diagnostic mode branch
-    if (BENCH_DEBUG_MODE) {
+    if (g_cfg.benchDebugMode) {
         if (millis() - lastPrintMillis >= 150) {
             lastPrintMillis = millis();
             runBenchDiagnostics();
@@ -166,7 +180,7 @@ void loop() {
     }
 
     //open-loop motor test branch
-    if (MOTOR_TEST_MODE) {
+    if (g_cfg.motorTestMode) {
         runMotorTest();
         return;
     }
