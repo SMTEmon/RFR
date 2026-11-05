@@ -83,10 +83,12 @@ static void runMotorTest() {
     int32_t rightEnc = getRightTicks();
     int32_t err = computePositionError(false);
 
+    int16_t curTestSpeed = g_cfg.baseSpeed > 0 ? g_cfg.baseSpeed : TEST_MOTOR_SPEED;
+
     switch (phase) {
-        case 0: drive(TEST_MOTOR_SPEED, 0); break;   //left only
-        case 1: drive(0, TEST_MOTOR_SPEED); break;   //right only
-        case 2: drive(TEST_MOTOR_SPEED, TEST_MOTOR_SPEED); break; //both
+        case 0: drive(curTestSpeed, 0); break;   //left only
+        case 1: drive(0, curTestSpeed); break;   //right only
+        case 2: drive(curTestSpeed, curTestSpeed); break; //both
         case 3: drive(0, 0); break;     //pause
     }
 
@@ -95,9 +97,9 @@ static void runMotorTest() {
         printSensorMap();
         printFeatureTags();
         switch (phase) {
-            case 0: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] LEFT MOTOR ON (PWM %d)\n",  (long)err, (long)leftEnc, (long)rightEnc, TEST_MOTOR_SPEED); break;
-            case 1: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] RIGHT MOTOR ON (PWM %d)\n", (long)err, (long)leftEnc, (long)rightEnc, TEST_MOTOR_SPEED); break;
-            case 2: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] BOTH MOTORS ON (PWM %d)\n",  (long)err, (long)leftEnc, (long)rightEnc, TEST_MOTOR_SPEED); break;
+            case 0: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] LEFT MOTOR ON (PWM %d)\n",  (long)err, (long)leftEnc, (long)rightEnc, curTestSpeed); break;
+            case 1: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] RIGHT MOTOR ON (PWM %d)\n", (long)err, (long)leftEnc, (long)rightEnc, curTestSpeed); break;
+            case 2: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] BOTH MOTORS ON (PWM %d)\n",  (long)err, (long)leftEnc, (long)rightEnc, curTestSpeed); break;
             case 3: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] PAUSE (BOTH OFF)\n", (long)err, (long)leftEnc, (long)rightEnc); break;
         }
     }

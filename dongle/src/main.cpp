@@ -34,8 +34,9 @@ struct CommandPacket {
 
 //hardcoded lfr robot mac address (b4:bf:e9:0f:13:c0)
 static const uint8_t DEFAULT_LFR_MAC[6] = {0xB4, 0xBF, 0xE9, 0x0F, 0x13, 0xC0};
+static const uint8_t BROADCAST_MAC[6]   = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 static uint8_t lfrMac[6] = {0xB4, 0xBF, 0xE9, 0x0F, 0x13, 0xC0};
-static bool lfrKnown = true;
+static bool lfrKnown = false;
 static String serialRxBuf = "";
 
 static uint8_t calcChecksum(const uint8_t *data, size_t len) {
@@ -61,20 +62,27 @@ static const char* getStateName(uint8_t st) {
     }
 }
 
-//register sender peer dynamically
-static void registerLfrPeer(const uint8_t *mac) {
-    if (!lfrKnown || memcmp(lfrMac, mac, 6) != 0) {
-        memcpy(lfrMac, mac, 6);
-        lfrKnown = true;
-
-        if (!esp_now_is_peer_exist(mac)) {
-            esp_now_peer_info_t peer = {};
-            memcpy(peer.peer_addr, mac, 6);
-            peer.channel = 1;
-            peer.encrypt = false;
-            esp_now_add_peer(&peer);
+//ensure peer is added to esp-now peer table
+static bool ensurePeer(const uint8_t *mac) {
+    if (!esp_now_is_peer_exist(mac)) {
+        esp_now_peer_info_t peer = {};
+        memcpy(peer.peer_addr, mac, 6);
+        peer.channel = 1;
+        peer.encrypt = false;
+        esp_err_t err = esp_now_add_peer(&peer);
+        if (err != ESP_OK) {
+            Serial.printf("{\"t\":\"err\",\"msg\":\"esp_now_add_peer failed: %d\"}\n", (int)err);
+            return false;
         }
     }
+    return true;
+}
+
+//register sender peer dynamically
+static void registerLfrPeer(const uint8_t *mac) {
+    memcpy(lfrMac, mac, 6);
+    lfrKnown = true;
+    ensurePeer(mac);
 }
 
 //esp-now rx callback
@@ -111,21 +119,13 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
 }
 
 static void sendCommand(const CommandPacket &cmd) {
-    if (!lfrKnown) {
-        //broadcast if lfr mac not learned yet
-        uint8_t bcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-        if (!esp_now_is_peer_exist(bcast)) {
-            esp_now_peer_info_t peer = {};
-            memcpy(peer.peer_addr, bcast, 6);
-            peer.channel = 1;
-            peer.encrypt = false;
-            esp_now_add_peer(&peer);
-        }
-        esp_now_send(bcast, reinterpret_cast<const uint8_t*>(&cmd), sizeof(cmd));
-        return;
+    ensurePeer(lfrMac);
+    esp_err_t err = esp_now_send(lfrMac, reinterpret_cast<const uint8_t*>(&cmd), sizeof(cmd));
+    if (err != ESP_OK) {
+        ensurePeer(BROADCAST_MAC);
+        err = esp_now_send(BROADCAST_MAC, reinterpret_cast<const uint8_t*>(&cmd), sizeof(cmd));
     }
-
-    esp_now_send(lfrMac, reinterpret_cast<const uint8_t*>(&cmd), sizeof(cmd));
+    Serial.printf("{\"t\":\"ack\",\"cmd\":%u,\"err\":%d}\n", cmd.cmdType, (int)err);
 }
 
 //parse incoming command line from webserial
@@ -176,9 +176,6 @@ static void handleSerialCommand(const String &line) {
 
     pkt.checksum = calcChecksum(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt) - 1);
     sendCommand(pkt);
-
-    //ack back to webserial
-    Serial.printf("{\"t\":\"ack\",\"cmd\":%u}\n", cmdType);
 }
 
 void setup() {
@@ -199,8 +196,10 @@ void setup() {
 
     esp_now_register_recv_cb(onDataRecv);
 
-    //pre-register lfr robot peer (b4:bf:e9:0f:13:c0)
-    registerLfrPeer(DEFAULT_LFR_MAC);
+    //pre-register lfr robot peer (b4:bf:e9:0f:13:c0) and broadcast peer
+    ensurePeer(DEFAULT_LFR_MAC);
+    ensurePeer(BROADCAST_MAC);
+    lfrKnown = true;
 
     Serial.println("{\"t\":\"ready\",\"dongle\":\"LFR USB-ESP Bridge Ready (Peer: b4:bf:e9:0f:13:c0)\"}");
 }

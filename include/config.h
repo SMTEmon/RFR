@@ -27,7 +27,7 @@ constexpr uint8_t PIN_MUX_S0  = 5;
 constexpr uint8_t PIN_MUX_S1  = 18;
 constexpr uint8_t PIN_MUX_S2  = 19;
 constexpr uint8_t PIN_MUX_S3  = 21;
-constexpr uint8_t PIN_MUX_SIG = 15; //adc1 channel 6
+constexpr uint8_t PIN_MUX_SIG = 35; //adc1 channel 6
 constexpr uint8_t PIN_LED     = 2;  //devkit onboard led
 
 //sensor array geometry
@@ -109,10 +109,10 @@ constexpr bool INVERT_LEFT_ENC       = true; //toggle if left encoder counts dow
 constexpr bool INVERT_RIGHT_ENC      = true; //toggle if right encoder counts down when rolling forward
 
 //base speed and pid tuning gains
-constexpr int16_t BASE_SPEED         = 140;
-constexpr int16_t MIN_SPEED          = 80;
-constexpr int16_t MAX_SPEED          = 220;
-constexpr int16_t TURN_SPEED         = 120;
+constexpr int16_t BASE_SPEED         = 11;
+constexpr int16_t MIN_SPEED          = 10;
+constexpr int16_t MAX_SPEED          = 12;
+constexpr int16_t TURN_SPEED         = 10;
 
 constexpr float PID_KP               = 0.045f;
 constexpr float PID_KD               = 0.280f;

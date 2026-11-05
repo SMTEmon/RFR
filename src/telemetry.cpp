@@ -29,6 +29,8 @@ static void loadDefaultConfig() {
     g_cfg.enableInverted  = ENABLE_INVERTED_ZONE;
 }
 
+constexpr uint16_t CFG_VERSION = 2026;
+
 void loadConfigFromNVS() {
     loadDefaultConfig();
 
@@ -36,7 +38,8 @@ void loadConfigFromNVS() {
         return;
     }
 
-    if (prefs.isKey("saved")) {
+    // Only load if saved with current version (ignoring stale old NVS)
+    if (prefs.isKey("saved") && prefs.getUShort("ver", 0) == CFG_VERSION) {
         g_cfg.baseSpeed       = prefs.getShort("base", g_cfg.baseSpeed);
         g_cfg.minSpeed        = prefs.getShort("min",  g_cfg.minSpeed);
         g_cfg.maxSpeed        = prefs.getShort("max",  g_cfg.maxSpeed);
@@ -48,8 +51,13 @@ void loadConfigFromNVS() {
         g_cfg.motorTestMode   = prefs.getBool("mtest", g_cfg.motorTestMode);
         g_cfg.enableInverted  = prefs.getBool("inv",   g_cfg.enableInverted);
         Serial.println("//loaded custom tunings from nvs");
+    } else {
+        Serial.println("//using config.h defaults (ignoring stale NVS)");
     }
     prefs.end();
+
+    Serial.printf("//ACTIVE SPEEDS: Base=%d, Min=%d, Max=%d, Turn=%d\n",
+                  g_cfg.baseSpeed, g_cfg.minSpeed, g_cfg.maxSpeed, g_cfg.turnSpeed);
 }
 
 void saveConfigToNVS() {
@@ -67,6 +75,7 @@ void saveConfigToNVS() {
     prefs.putBool("bench", g_cfg.benchDebugMode);
     prefs.putBool("mtest", g_cfg.motorTestMode);
     prefs.putBool("inv",   g_cfg.enableInverted);
+    prefs.putUShort("ver", CFG_VERSION);
     prefs.putBool("saved", true);
     prefs.end();
     Serial.println("//saved current tunings to nvs flash");
@@ -95,6 +104,8 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
     uint8_t expected = calcChecksum(data, sizeof(CommandPacket) - 1);
     if (cmd->checksum != expected) return;
 
+    Serial.printf("//CMD RECV: %d (mode=%d, base=%d, min=%d)\n", cmd->cmdType, cmd->runMode, cmd->baseSpeed, cmd->minSpeed);
+
     switch (cmd->cmdType) {
         case 1: //emergency stop
             g_emergencyStop = true;
@@ -104,6 +115,9 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
 
         case 2: //start / resume
             g_emergencyStop = false;
+            if (getNavState() == STATE_STOPPED) {
+                navigatorInit();
+            }
             motorsArm(true);
             break;
 
@@ -118,6 +132,12 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
             g_cfg.benchDebugMode = (cmd->runMode == 1);
             g_cfg.motorTestMode  = (cmd->runMode == 2);
             g_cfg.enableInverted = (cmd->enableInverted != 0);
+            if (g_cfg.benchDebugMode) {
+                drive(0, 0);
+                motorsArm(false);
+            } else if (!g_emergencyStop) {
+                motorsArm(true);
+            }
             break;
 
         case 4: //commit current params to nvs
@@ -201,9 +221,9 @@ void telemetrySendNow() {
 }
 
 void telemetryUpdate() {
-    //transmit telemetry at 25hz (every 40ms)
+    //transmit telemetry at 13.5hz (every 80ms)
     uint32_t now = millis();
-    if (now - lastTelemTime >= 40) {
+    if (now - lastTelemTime >= 80) {
         lastTelemTime = now;
         telemetrySendNow();
     }

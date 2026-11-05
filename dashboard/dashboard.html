@@ -430,19 +430,19 @@
         <div class="speeds-grid">
           <div class="control-item">
             <div class="control-header"><span>BASE SPEED</span><span class="control-val" id="valBase">140</span></div>
-            <input type="range" id="sliderBase" min="60" max="255" value="140">
+            <input type="range" id="sliderBase" min="0" max="255" value="140">
           </div>
           <div class="control-item">
             <div class="control-header"><span>MIN SPEED (CORNERS)</span><span class="control-val" id="valMin">80</span></div>
-            <input type="range" id="sliderMin" min="40" max="200" value="80">
+            <input type="range" id="sliderMin" min="0" max="255" value="80">
           </div>
           <div class="control-item">
             <div class="control-header"><span>MAX SPEED (BURST)</span><span class="control-val" id="valMax">220</span></div>
-            <input type="range" id="sliderMax" min="100" max="255" value="220">
+            <input type="range" id="sliderMax" min="0" max="255" value="220">
           </div>
           <div class="control-item">
             <div class="control-header"><span>TURN SPEED (PIVOT)</span><span class="control-val" id="valTurn">120</span></div>
-            <input type="range" id="sliderTurn" min="60" max="220" value="120">
+            <input type="range" id="sliderTurn" min="0" max="255" value="120">
           </div>
         </div>
       </div>
@@ -540,13 +540,21 @@
       }
     }
 
-    async function sendCommand(obj) {
-      if (!port || !port.writable) return;
-      const encoder = new TextEncoder();
-      const line = JSON.stringify(obj) + "\n";
-      const writer = port.writable.getWriter();
-      await writer.write(encoder.encode(line));
-      writer.releaseLock();
+    let writeQueue = Promise.resolve();
+    function sendCommand(obj) {
+      if (!port || !port.writable) return Promise.resolve();
+      writeQueue = writeQueue.then(async () => {
+        try {
+          const encoder = new TextEncoder();
+          const line = JSON.stringify(obj) + "\n";
+          const writer = port.writable.getWriter();
+          await writer.write(encoder.encode(line));
+          writer.releaseLock();
+        } catch (err) {
+          console.error("WebSerial send error:", err);
+        }
+      });
+      return writeQueue;
     }
 
     async function readSerialLoop() {
@@ -632,6 +640,10 @@
 
     //handle incoming telemetry packet
     function handleTelemetry(data) {
+      if (data.t === "ack") {
+        console.log("Dongle ACK:", data);
+        return;
+      }
       if (data.t !== "telem") return;
 
       rxCount++;
@@ -718,12 +730,39 @@
       sendLiveTunings();
     });
 
+    function flashButton(btnId, msg, bg = "#10b981") {
+      const btn = document.getElementById(btnId);
+      if (!btn) return;
+      if (!btn.dataset.origText) btn.dataset.origText = btn.textContent;
+      btn.textContent = msg;
+      btn.style.background = bg;
+      btn.style.color = "#000";
+      clearTimeout(btn._resetTimer);
+      btn._resetTimer = setTimeout(() => {
+        btn.textContent = btn.dataset.origText;
+        btn.style.background = "";
+        btn.style.color = "";
+      }, 900);
+    }
+
+    let debounceTimer = null;
+    function debouncedSendLiveTunings() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        sendLiveTunings(true);
+      }, 80);
+    }
+
     //slider label binding
     const bindSlider = (id, valId) => {
       const slider = document.getElementById(id);
       const val = document.getElementById(valId);
       slider.addEventListener('input', () => {
         val.textContent = slider.value;
+        debouncedSendLiveTunings();
+      });
+      slider.addEventListener('change', () => {
+        sendLiveTunings(false);
       });
     };
     bindSlider('sliderBase', 'valBase');
@@ -734,7 +773,8 @@
     bindSlider('sliderKd', 'valKd');
     bindSlider('sliderEncKp', 'valEncKp');
 
-    function sendLiveTunings() {
+    function sendLiveTunings(silent = false) {
+      if (!silent) flashButton('btnApply', '✔ TUNINGS APPLIED');
       sendCommand({
         cmd: 3,
         base: parseInt(document.getElementById('sliderBase').value),
@@ -749,9 +789,15 @@
       });
     }
 
-    document.getElementById('btnApply').addEventListener('click', sendLiveTunings);
-    document.getElementById('btnSave').addEventListener('click', () => sendCommand({ cmd: 4 }));
-    document.getElementById('btnResetEnc').addEventListener('click', () => sendCommand({ cmd: 5 }));
+    document.getElementById('btnApply').addEventListener('click', () => sendLiveTunings(false));
+    document.getElementById('btnSave').addEventListener('click', () => {
+      sendCommand({ cmd: 4 });
+      flashButton('btnSave', '✔ COMMITTED TO FLASH');
+    });
+    document.getElementById('btnResetEnc').addEventListener('click', () => {
+      sendCommand({ cmd: 5 });
+      flashButton('btnResetEnc', '✔ ENCODERS ZEROED');
+    });
 
     //emergency stop & start
     const triggerStop = () => sendCommand({ cmd: 1 });

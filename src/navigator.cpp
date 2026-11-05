@@ -58,6 +58,8 @@ void navigatorUpdate() {
         case STATE_START_EXIT: {
             //blind straight exit out of #31 start box
             int16_t diff = static_cast<int16_t>(g_cfg.encKp * (leftEnc - rightEnc));
+            int16_t maxDiff = max((int16_t)(g_cfg.baseSpeed / 2), (int16_t)10);
+            diff = constrain(diff, -maxDiff, maxDiff);
             drive(g_cfg.baseSpeed - diff, g_cfg.baseSpeed + diff);
 
             //transition once out of solid black box and line is centered
@@ -119,11 +121,17 @@ void navigatorUpdate() {
 
             int16_t correction = static_cast<int16_t>(g_cfg.pidKp * error + g_cfg.pidKd * dError * 0.001f);
 
-            //slow down on sharp curves
+            //slow down on sharp curves, burst on straightaways
             int16_t speed = g_cfg.baseSpeed;
             if (abs(error) > 2000) {
                 speed = g_cfg.minSpeed;
+            } else if (abs(error) < 400 && g_cfg.maxSpeed > g_cfg.baseSpeed) {
+                speed = g_cfg.maxSpeed;
             }
+
+            // Bound correction so steering never exceeds forward speed envelope
+            int16_t maxCorr = max((int16_t)speed, (int16_t)25);
+            correction = constrain(correction, -maxCorr, maxCorr);
 
             drive(speed + correction, speed - correction);
             break;
@@ -144,6 +152,8 @@ void navigatorUpdate() {
             prevError = error;
 
             int16_t correction = static_cast<int16_t>(g_cfg.pidKp * error + g_cfg.pidKd * dError * 0.001f);
+            int16_t maxCorr = max((int16_t)g_cfg.baseSpeed, (int16_t)25);
+            correction = constrain(correction, -maxCorr, maxCorr);
             drive(g_cfg.baseSpeed + correction, g_cfg.baseSpeed - correction);
             break;
         }
@@ -167,6 +177,8 @@ void navigatorUpdate() {
         case STATE_GAP_OR_DEADEND: {
             //hold straight heading using encoders
             int16_t diff = static_cast<int16_t>(g_cfg.encKp * (leftEnc - rightEnc));
+            int16_t maxDiff = max((int16_t)(g_cfg.minSpeed / 2), (int16_t)10);
+            diff = constrain(diff, -maxDiff, maxDiff);
             drive(g_cfg.minSpeed - diff, g_cfg.minSpeed + diff);
 
             //line found within gap limit
@@ -197,6 +209,8 @@ void navigatorUpdate() {
         case STATE_ALL_BLACK_CHECK: {
             //creep forward to confirm feature type
             int16_t diff = static_cast<int16_t>(g_cfg.encKp * (leftEnc - rightEnc));
+            int16_t maxDiff = max((int16_t)(g_cfg.minSpeed / 2), (int16_t)10);
+            diff = constrain(diff, -maxDiff, maxDiff);
             drive(g_cfg.minSpeed - diff, g_cfg.minSpeed + diff);
 
             int32_t distance = currentTicks - checkStartTicks;
