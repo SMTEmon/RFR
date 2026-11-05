@@ -27,7 +27,7 @@ constexpr uint8_t PIN_MUX_S0  = 5;
 constexpr uint8_t PIN_MUX_S1  = 18;
 constexpr uint8_t PIN_MUX_S2  = 19;
 constexpr uint8_t PIN_MUX_S3  = 21;
-constexpr uint8_t PIN_MUX_SIG = 35; //adc1 channel 6
+constexpr uint8_t PIN_MUX_SIG = 35; //adc1 channel 7 (safe with esp-now)
 constexpr uint8_t PIN_LED     = 2;  //devkit onboard led
 
 //sensor array geometry
@@ -88,6 +88,7 @@ constexpr bool ADC_HIGH_IS_BLACK     = true;
 constexpr bool BENCH_DEBUG_MODE      = false;
 constexpr bool MOTOR_TEST_MODE       = false;
 constexpr bool ENABLE_INVERTED_ZONE  = false; //enable when track contains #29 white-on-black zone
+constexpr bool DEFAULT_SKIP_START_EXIT = true; //default true to follow line immediately without 12cm blind drive
 
 //odometry & distance thresholds
 //shortcut: default 28 ticks per cm, calibrate with ruler on bench
@@ -99,8 +100,9 @@ constexpr int32_t STOP_BOX_TICKS     = static_cast<int32_t>(7.5f  * TICKS_PER_CM
 constexpr int32_t LATCH_WINDOW_TICKS = static_cast<int32_t>(8.0f  * TICKS_PER_CM);
 constexpr int32_t UTURN_180_TICKS    = static_cast<int32_t>(20.0f * TICKS_PER_CM);
 
-//open-loop test speed
-constexpr int16_t TEST_MOTOR_SPEED   = 130;   //pwm duty cycle for open-loop motor test (0..255)
+//safety & deadman timing
+constexpr uint32_t MANUAL_DEADMAN_MS = 250; //auto-stop in wasd mode if no heartbeat for 250ms
+constexpr uint32_t STOP_BRAKE_MS     = 150; //active short brake pulse before coasting
 
 //motor & encoder polarity
 constexpr bool INVERT_LEFT_MOTOR     = true; //flipped to false so left motor rolls forward
@@ -109,10 +111,10 @@ constexpr bool INVERT_LEFT_ENC       = true; //toggle if left encoder counts dow
 constexpr bool INVERT_RIGHT_ENC      = true; //toggle if right encoder counts down when rolling forward
 
 //base speed and pid tuning gains
-constexpr int16_t BASE_SPEED         = 11;
-constexpr int16_t MIN_SPEED          = 10;
-constexpr int16_t MAX_SPEED          = 12;
-constexpr int16_t TURN_SPEED         = 10;
+constexpr int16_t BASE_SPEED         = 140;
+constexpr int16_t MIN_SPEED          = 80;
+constexpr int16_t MAX_SPEED          = 220;
+constexpr int16_t TURN_SPEED         = 120;
 
 constexpr float PID_KP               = 0.045f;
 constexpr float PID_KD               = 0.280f;

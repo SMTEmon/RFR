@@ -3,241 +3,566 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LFR Telemetry Cockpit | ESP-NOW WebSerial</title>
+  <title>LFR Telemetry Cockpit & Manual Drive</title>
   <style>
     :root {
-      --bg-dark: #070b12;
-      --card-bg: #0d131f;
-      --card-border: #1a2333;
+      --bg-base: #0a0e17;
+      --bg-card: #0f172a;
+      --border: #1e293b;
       --cyan: #06b6d4;
-      --cyan-glow: rgba(6, 182, 212, 0.4);
-      --green: #10b981;
-      --green-glow: rgba(16, 185, 129, 0.4);
-      --red: #ef4444;
-      --red-glow: rgba(239, 68, 68, 0.4);
+      --cyan-dim: rgba(6, 182, 212, 0.15);
+      --emerald: #10b981;
+      --emerald-dim: rgba(16, 185, 129, 0.15);
+      --amber: #f59e0b;
+      --rose: #f43f5e;
       --purple: #a855f7;
-      --yellow: #f59e0b;
       --text-main: #f8fafc;
-      --text-muted: #8492a6;
+      --text-muted: #94a3b8;
     }
 
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace; }
-    body { background: var(--bg-dark); color: var(--text-main); min-height: 100vh; padding: 14px; overflow-x: hidden; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-base);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
 
-    /* Header */
     header {
-      display: flex; justify-content: space-between; align-items: center;
-      background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px;
-      padding: 10px 18px; margin-bottom: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      flex-wrap: wrap;
+      gap: 10px;
     }
-    .logo-area { display: flex; align-items: center; gap: 12px; }
-    .logo-badge {
-      background: linear-gradient(135deg, var(--cyan), #3b82f6); color: #fff;
-      font-weight: 800; font-size: 13px; padding: 4px 10px; border-radius: 6px; letter-spacing: 0.5px;
+    .header-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .title { font-size: 17px; font-weight: 800; letter-spacing: 1px; color: var(--cyan); }
+    .status-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 12px;
+      background: #1e293b;
+      color: #94a3b8;
+      border: 1px solid rgba(255,255,255,0.05);
+      letter-spacing: 0.5px;
     }
-    .title { font-size: 17px; font-weight: 800; letter-spacing: 1px; }
+    .status-badge.connected { background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: rgba(16, 185, 129, 0.4); }
+    .status-badge.warning { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border-color: rgba(245, 158, 11, 0.4); }
+    .status-badge.danger { background: rgba(244, 63, 94, 0.2); color: #fb7185; border-color: rgba(244, 63, 94, 0.4); }
+    .status-badge.armed { background: rgba(16, 185, 129, 0.3); color: #6ee7b7; border-color: #10b981; animation: pulseArmed 1.5s infinite; }
+    @keyframes pulseArmed { 0%, 100% { opacity: 1; } 50% { opacity: 0.6; } }
 
     .header-controls { display: flex; align-items: center; gap: 10px; }
     .btn {
-      padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 700;
-      border: none; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      letter-spacing: 0.5px;
+      user-select: none;
     }
-    .btn-connect { background: #162032; color: var(--cyan); border: 1px solid var(--cyan); }
-    .btn-connect:hover { background: var(--cyan); color: #000; box-shadow: 0 0 15px var(--cyan-glow); }
-    .btn-connect.connected { background: var(--green); color: #000; border-color: var(--green); }
-    .btn-estop { background: var(--red); color: #fff; font-weight: 800; padding: 8px 22px; box-shadow: 0 0 15px var(--red-glow); }
-    .btn-estop:hover { background: #dc2626; transform: scale(1.02); }
-    .btn-start { background: var(--green); color: #000; font-weight: 700; }
-    .btn-start:hover { background: #059669; }
+    .btn:active { transform: translateY(1px); }
+    .btn-connect { background: #1e293b; color: #fff; border: 1px solid #334155; }
+    .btn-connect.is-connected { background: #065f46; color: #34d399; border-color: #10b981; }
+    .btn-start { background: var(--emerald); color: #022c22; }
+    .btn-start:hover { filter: brightness(1.15); }
+    .btn-estop { background: var(--rose); color: #fff; font-weight: 800; }
+    .btn-estop:hover { filter: brightness(1.15); }
 
-    /* Main Grid */
     .dashboard-grid {
-      display: grid; grid-template-columns: 1.15fr 1fr; gap: 14px; margin-bottom: 14px;
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 14px;
     }
     @media (max-width: 1080px) { .dashboard-grid { grid-template-columns: 1fr; } }
 
     .card {
-      background: var(--card-bg); border: 1px solid var(--card-border);
-      border-radius: 12px; padding: 14px 16px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
     }
     .card-title {
-      font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
-      color: var(--text-muted); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      color: #94a3b8;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #1e293b;
+      padding-bottom: 8px;
     }
 
-    /* U-Arch SVG Visualizer */
+    /* U-Arch SVG Container */
     .uarch-container {
-      display: flex; flex-direction: column; align-items: center; justify-content: center;
-      position: relative; padding: 8px; background: rgba(10, 15, 26, 0.7); border-radius: 10px; border: 1px solid #1a2333;
+      position: relative;
+      background: #090d16;
+      border: 1px solid #1a2333;
+      border-radius: 8px;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
-    svg.uarch-svg { width: 100%; max-width: 500px; height: 230px; }
-    .sensor-node { transition: all 0.12s ease-out; cursor: pointer; }
-    .sensor-white { fill: #131d2e; stroke: #334155; stroke-width: 0.8; }
-    .sensor-black { fill: #10b981; stroke: #34d399; stroke-width: 1.2; filter: drop-shadow(0 0 5px rgba(16, 185, 129, 0.9)); }
+    .uarch-svg {
+      width: 100%;
+      max-height: 220px;
+      overflow: visible;
+    }
+    .sensor-node {
+      stroke: #334155;
+      stroke-width: 1.2;
+      transition: fill 0.1s ease, stroke 0.1s ease, filter 0.1s ease;
+    }
+    .sensor-white { fill: #1e293b; }
+    .sensor-black { fill: #06b6d4; stroke: #38bdf8; filter: drop-shadow(0 0 5px rgba(6, 182, 212, 0.9)); }
     .sensor-text {
-      font-size: 3.2px; font-family: "JetBrains Mono", monospace; font-weight: 700;
-      fill: #94a3b8; text-anchor: middle; dominant-baseline: central; pointer-events: none;
+      font-size: 3.2px;
+      fill: #475569;
+      font-family: monospace;
+      text-anchor: middle;
+      dominant-baseline: central;
+      pointer-events: none;
     }
-    .sensor-node:hover { stroke: #06b6d4; stroke-width: 1.2; }
 
-    /* Contiguous 16-Channel Raw ADC Bar Array */
+    /* Raw ADC Spectrum */
     .bars-container-title {
-      display: flex; justify-content: space-between; align-items: center;
-      font-size: 10px; font-weight: 700; color: #64748b; margin-top: 10px; margin-bottom: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+      display: flex;
+      justify-content: space-between;
+      margin-top: 4px;
     }
     .bars-grid {
-      display: grid; grid-template-columns: repeat(16, 1fr); gap: 4px;
-      padding: 8px 6px; background: rgba(10, 14, 23, 0.6); border-radius: 8px; border: 1px solid #1a2333;
+      display: grid;
+      grid-template-columns: repeat(16, 1fr);
+      gap: 4px;
+      height: 120px;
+      background: #090d16;
+      border: 1px solid #1a2333;
+      border-radius: 8px;
+      padding: 8px 6px;
+      align-items: flex-end;
     }
-    .bar-col { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-    .bar-value { font-size: 8px; font-family: "JetBrains Mono", monospace; font-weight: 700; color: var(--cyan); }
+    .bar-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      height: 100%;
+      justify-content: flex-end;
+      gap: 3px;
+    }
+    .bar-value { font-size: 8px; color: #94a3b8; font-family: monospace; height: 12px; }
     .bar-track {
-      width: 100%; height: 60px; background: #080c14; border-radius: 3px; border: 1px solid #1e293b;
-      position: relative; overflow: hidden; display: flex; align-items: flex-end;
-    }
-    /* Schmitt trigger 50% threshold indicator line */
-    .bar-track::after {
-      content: ""; position: absolute; top: 50%; left: 0; right: 0; height: 1px;
-      background: rgba(148, 163, 184, 0.2); border-top: 1px dashed rgba(148, 163, 184, 0.35);
+      width: 100%;
+      max-width: 18px;
+      flex-grow: 1;
+      background: #141c2b;
+      border-radius: 3px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: flex-end;
+      border: 1px solid #1e293b;
     }
     .bar-fill {
-      width: 100%; background: linear-gradient(to top, #0284c7, #06b6d4);
-      transition: height 0.08s ease-out;
+      width: 100%;
+      background: #334155;
+      border-radius: 2px;
+      transition: height 0.08s ease, background 0.1s ease;
     }
-    .bar-fill.active {
-      background: linear-gradient(to top, #059669, #10b981);
-      box-shadow: 0 0 8px rgba(16, 185, 129, 0.6);
-    }
-    .bar-label { font-size: 8px; font-weight: 700; font-family: "JetBrains Mono", monospace; color: #64748b; }
-    .bar-col.wing .bar-label { color: #c084fc; }
-    .bar-col.bevel .bar-label { color: #38bdf8; }
-    .bar-col.core .bar-label { color: #10b981; }
+    .bar-fill.active { background: #06b6d4; box-shadow: 0 0 6px rgba(6, 182, 212, 0.8); }
+    .bar-col.wing .bar-fill.active { background: #c084fc; box-shadow: 0 0 6px rgba(192, 132, 252, 0.8); }
+    .bar-col.bevel .bar-fill.active { background: #38bdf8; box-shadow: 0 0 6px rgba(56, 189, 248, 0.8); }
+    .bar-label { font-size: 8.5px; color: #64748b; font-weight: 700; }
 
-    /* Navigation Stats */
+    /* Stats Grid */
     .stats-row {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
     }
+    @media (max-width: 600px) { .stats-row { grid-template-columns: repeat(2, 1fr); } }
     .stat-box {
-      background: rgba(10, 15, 26, 0.7); border: 1px solid #1a2333; border-radius: 8px;
-      padding: 8px; text-align: center;
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
     }
-    .stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 3px; }
-    .stat-value { font-size: 16px; font-weight: 800; color: var(--cyan); font-family: "JetBrains Mono", monospace; }
+    .stat-label { font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: 0.5px; }
+    .stat-value { font-size: 16px; font-weight: 800; font-family: monospace; color: var(--text-main); }
 
-    .state-badge {
-      display: inline-block; padding: 3px 10px; border-radius: 6px; font-weight: 800; font-size: 12px;
-      background: #162032; color: var(--cyan); border: 1px solid var(--cyan);
-    }
-    .badge-stopped { background: var(--red); color: #fff; border-color: var(--red); }
-    .badge-normal { background: #064e3b; color: #34d399; border-color: #059669; }
-
-    /* Course Deviation Gauge (Steering Needle) */
+    /* Deviation Needle */
     .deviation-card {
-      background: rgba(10, 15, 26, 0.7); border: 1px solid #1a2333; border-radius: 8px;
-      padding: 8px 12px; margin-bottom: 10px;
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
     }
     .deviation-header {
-      display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; color: #8492a6; margin-bottom: 5px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 10.5px;
+      font-weight: 700;
+      color: #64748b;
     }
-    .deviation-readout { color: var(--cyan); font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; }
+    .deviation-readout { color: var(--cyan); font-family: monospace; font-size: 12px; }
     .deviation-track {
-      position: relative; height: 14px; background: #090d16; border-radius: 4px;
-      border: 1px solid #1e293b; overflow: hidden; display: flex;
+      position: relative;
+      height: 14px;
+      background: #141c2b;
+      border-radius: 7px;
+      border: 1px solid #1e293b;
+      display: flex;
+      overflow: hidden;
     }
-    .dev-zone { height: 100%; opacity: 0.25; }
-    .dev-zone-danger-l, .dev-zone-danger-r { width: 27%; background: #ef4444; }
-    .dev-zone-warn-l, .dev-zone-warn-r     { width: 14%; background: #f59e0b; }
-    .dev-zone-good                        { width: 18%; background: #10b981; }
+    .dev-zone { height: 100%; }
+    .dev-zone-danger-l { width: 25%; background: rgba(244, 63, 94, 0.15); }
+    .dev-zone-warn-l   { width: 15%; background: rgba(245, 158, 11, 0.15); }
+    .dev-zone-good     { width: 20%; background: rgba(16, 185, 129, 0.2); }
+    .dev-zone-warn-r   { width: 15%; background: rgba(245, 158, 11, 0.15); }
+    .dev-zone-danger-r { width: 25%; background: rgba(244, 63, 94, 0.15); }
     .dev-center-mark {
-      position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: #38bdf8; transform: translateX(-50%);
+      position: absolute;
+      left: 50%;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: #475569;
+      transform: translateX(-50%);
     }
     .dev-needle {
-      position: absolute; top: 0; bottom: 0; width: 6px; background: #f8fafc; border-radius: 2px;
-      transform: translateX(-50%); box-shadow: 0 0 8px #fff; transition: left 0.08s ease-out;
+      position: absolute;
+      top: 1px;
+      bottom: 1px;
+      width: 12px;
+      background: var(--cyan);
+      border-radius: 6px;
+      transform: translateX(-50%);
+      box-shadow: 0 0 8px var(--cyan);
+      transition: left 0.08s ease;
     }
     .deviation-scale {
-      display: flex; justify-content: space-between; font-size: 8px; font-family: monospace; color: #64748b; margin-top: 3px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 8.5px;
+      color: #475569;
+      font-family: monospace;
+      padding: 0 2px;
     }
 
-    /* Autonomous Feature Flags Cluster */
-    .flags-card {
-      background: rgba(10, 15, 26, 0.7); border: 1px solid #1a2333; border-radius: 8px;
-      padding: 8px 12px; margin-bottom: 10px;
+    /* Live PWM Meters */
+    .pwm-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
     }
-    .card-subtitle { font-size: 10px; font-weight: 800; color: #64748b; margin-bottom: 6px; letter-spacing: 0.5px; }
-    .flags-row { display: flex; gap: 6px; flex-wrap: wrap; }
+    .pwm-box {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 8px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .pwm-bar-track {
+      height: 8px;
+      background: #141c2b;
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+    }
+    .pwm-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--cyan);
+      transition: width 0.08s ease, background 0.1s ease;
+    }
+    .pwm-bar-fill.reverse { background: var(--rose); }
+
+    /* Flags & Latches */
+    .flags-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
     .flag-badge {
-      font-size: 10px; font-weight: 800; font-family: "JetBrains Mono", monospace;
-      padding: 3px 8px; border-radius: 5px; background: #0f172a; color: #475569; border: 1px solid #1e293b;
-      transition: all 0.15s;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: #141c2b;
+      color: #475569;
+      border: 1px solid #1e293b;
+      letter-spacing: 0.5px;
     }
-    .flag-badge.active-wing { background: rgba(168, 85, 247, 0.2); color: #c084fc; border-color: #a855f7; box-shadow: 0 0 8px rgba(168, 85, 247, 0.5); }
-    .flag-badge.active-inv  { background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: #10b981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.5); }
-    .flag-badge.active-stop { background: rgba(239, 68, 68, 0.2);  color: #f87171; border-color: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.5); }
+    .flag-badge.active-wing { background: rgba(192, 132, 252, 0.2); color: #c084fc; border-color: #a855f7; }
+    .flag-badge.active-inv  { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border-color: #f59e0b; }
+    .flag-badge.active-cal  { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border-color: #0284c7; animation: pulseArmed 1s infinite; }
+    .flag-badge.active-stop { background: rgba(244, 63, 94, 0.2); color: #fb7185; border-color: #f43f5e; }
 
-    /* Live PID Oscilloscope */
-    .canvas-container { width: 100%; height: 150px; position: relative; margin-top: 6px; }
-    canvas#pidChart { width: 100%; height: 100%; background: #080c14; border-radius: 8px; border: 1px solid #1a2333; }
+    /* PID Chart */
+    .canvas-container {
+      height: 105px;
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    canvas { width: 100%; height: 100%; display: block; }
 
-    /* Bottom: Structurally Clustered Tuning Panel */
-    .tuning-sections { display: flex; flex-direction: column; gap: 12px; }
-    .tuning-cluster-title {
-      font-size: 11px; font-weight: 800; color: var(--cyan); letter-spacing: 0.8px;
-      margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+    /* Modes & WASD Panel */
+    .mode-select-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
     }
-    .tuning-cluster-title::after { content: ""; flex: 1; height: 1px; background: #1a2333; }
-    .speeds-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-    .pid-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-    @media (max-width: 1080px) {
-      .speeds-grid { grid-template-columns: repeat(2, 1fr); }
-      .pid-grid { grid-template-columns: repeat(3, 1fr); }
-    }
-    @media (max-width: 720px) {
-      .speeds-grid, .pid-grid { grid-template-columns: 1fr; }
-    }
-
-    .control-item {
-      display: flex; flex-direction: column; gap: 5px; background: rgba(10, 15, 26, 0.7);
-      padding: 8px 12px; border-radius: 8px; border: 1px solid #1a2333;
-    }
-    .control-header { display: flex; justify-content: space-between; align-items: center; font-size: 11px; font-weight: 700; color: #8492a6; }
-    .control-val { color: var(--cyan); font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 700; }
-    input[type=range] {
-      -webkit-appearance: none; width: 100%; height: 5px; background: #1e293b; border-radius: 3px; outline: none;
-    }
-    input[type=range]::-webkit-slider-thumb {
-      -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%; background: var(--cyan); cursor: pointer; box-shadow: 0 0 8px var(--cyan-glow);
-    }
-
-    /* Mode Toggles */
-    .mode-select-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
     .mode-pill {
-      flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid #1e293b; background: #0b111c;
-      text-align: center; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+      padding: 7px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 6px;
+      background: #141c2b;
+      color: #94a3b8;
+      border: 1px solid #1e293b;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.15s ease;
     }
-    .mode-pill:hover { border-color: var(--cyan); }
-    .mode-pill.active { background: #0e7490; border-color: var(--cyan); color: #fff; box-shadow: 0 0 10px var(--cyan-glow); }
+    .mode-pill:hover { border-color: #334155; color: #fff; }
+    .mode-pill.active { background: var(--cyan-dim); color: var(--cyan); border-color: var(--cyan); }
+    .mode-pill.action-pill { border-style: dashed; }
+    .mode-pill.action-pill.active { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border-color: #f59e0b; }
 
-    .bottom-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
-    .btn-apply { background: var(--cyan); color: #000; font-weight: 700; }
-    .btn-save { background: #059669; color: #fff; font-weight: 700; }
-    .btn-export { background: #334155; color: #fff; font-weight: 700; }
-    .btn-apply:hover { background: #0891b2; }
-    .btn-save:hover { background: #047857; box-shadow: 0 0 12px var(--green-glow); }
-    .btn-export:hover { background: #475569; }
+    /* Interactive WASD Deck */
+    .wasd-deck {
+      display: none;
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 8px;
+      padding: 14px;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .wasd-deck.visible { display: flex; }
+    .wasd-disarmed-banner {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      color: #fcd34d;
+      font-size: 11.5px;
+      padding: 8px 12px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .wasd-pad-container {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+    .wasd-cluster {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+    .wasd-row {
+      display: flex;
+      gap: 8px;
+    }
+    .keycap {
+      width: 58px;
+      height: 52px;
+      background: #141c2b;
+      border: 1px solid #334155;
+      border-bottom: 3px solid #1e293b;
+      border-radius: 8px;
+      color: #94a3b8;
+      font-family: monospace;
+      font-size: 17px;
+      font-weight: 800;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.08s ease;
+    }
+    .keycap span.subtext { font-size: 8px; font-weight: 700; color: #64748b; }
+    .keycap:hover { border-color: #475569; color: #fff; }
+    .keycap:active, .keycap.pressed {
+      background: var(--cyan-dim);
+      color: var(--cyan);
+      border-color: var(--cyan);
+      border-bottom-width: 1px;
+      transform: translateY(2px);
+      box-shadow: 0 0 10px rgba(6, 182, 212, 0.6);
+    }
+    .keycap.space-key {
+      width: 160px;
+      height: 40px;
+      background: rgba(244, 63, 94, 0.15);
+      border-color: rgba(244, 63, 94, 0.4);
+      color: #fda4af;
+      font-size: 12px;
+    }
+    .keycap.space-key:active, .keycap.space-key.pressed {
+      background: rgba(244, 63, 94, 0.4);
+      border-color: var(--rose);
+      color: #fff;
+    }
+    .keycap.shift-key {
+      width: 74px;
+      height: 52px;
+      font-size: 11px;
+    }
 
-    /* Export Modal */
+    /* Sliders & Parameters */
+    .tuning-sections {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+    }
+    @media (max-width: 900px) { .tuning-sections { grid-template-columns: 1fr; } }
+    .tuning-cluster-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #94a3b8;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+    .speeds-grid, .pid-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .control-item {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10.5px;
+      font-weight: 700;
+      color: #64748b;
+    }
+    .control-val { color: var(--cyan); font-family: monospace; font-size: 12px; font-weight: 800; }
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 5px;
+      background: #1e293b;
+      border-radius: 3px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: var(--cyan);
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(6, 182, 212, 0.8);
+    }
+
+    /* Bottom Actions */
+    .bottom-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+    .btn-apply { background: var(--cyan); color: #082f49; }
+    .btn-save  { background: #1e293b; color: #38bdf8; border: 1px solid #0284c7; }
+    .btn-export{ background: #1e293b; color: #c084fc; border: 1px solid #7c3aed; }
+
+    /* Toast Notification */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #0f172a;
+      border: 1px solid var(--cyan);
+      color: var(--text-main);
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 700;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(10px);
+      transition: all 0.2s ease;
+      z-index: 100;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+    /* Modal */
     .modal {
-      display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.85); z-index: 999; align-items: center; justify-content: center;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 99;
+      padding: 16px;
     }
     .modal-content {
-      background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px;
-      width: 90%; max-width: 580px; padding: 18px; box-shadow: 0 10px 30px rgba(0,0,0,0.9);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      width: 100%;
+      max-width: 580px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
     }
-    textarea#exportText {
-      width: 100%; height: 250px; background: #060910; color: #34d399; border: 1px solid #1e293b;
-      border-radius: 8px; padding: 10px; font-family: "JetBrains Mono", monospace; font-size: 11px; resize: none; margin: 10px 0;
+    textarea {
+      width: 100%;
+      height: 220px;
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 10px;
+      color: #38bdf8;
+      font-family: monospace;
+      font-size: 11px;
+      resize: none;
     }
   </style>
 </head>
@@ -245,14 +570,15 @@
 
   <!-- Header -->
   <header>
-    <div class="logo-area">
-      <div class="logo-badge">LFR v2.0</div>
-      <div class="title">TELEMETRY COCKPIT</div>
-      <span id="connBadge" style="font-size: 11px; padding: 2px 8px; border-radius: 12px; background: #1e293b; color: #64748b;">DISCONNECTED</span>
+    <div class="header-left">
+      <div class="title">⚡ LFR COCKPIT</div>
+      <span class="status-badge" id="badgeUsb">USB: DISCONNECTED</span>
+      <span class="status-badge" id="badgeRf">ROBOT RF: NO SIGNAL</span>
+      <span class="status-badge" id="badgeArm">DISARMED (MOTORS OFF)</span>
     </div>
     <div class="header-controls">
       <button class="btn btn-connect" id="btnConnect">⚡ CONNECT USB</button>
-      <button class="btn btn-start" id="btnStart">▶ START</button>
+      <button class="btn btn-start" id="btnStart">▶ ARM / START</button>
       <button class="btn btn-estop" id="btnEstop">⏹ STOP [SPACE]</button>
     </div>
   </header>
@@ -260,53 +586,48 @@
   <!-- Main Grid -->
   <div class="dashboard-grid">
 
-    <!-- Left: Sensor Geometry & ADC -->
+    <!-- Left: Sensor Array & ADC Spectrum -->
     <div class="card">
       <div class="card-title">
         <span>U-Arch Sensor Geometry (Exact CAD Layout)</span>
-        <span id="rateLabel" style="font-size: 11px; color: var(--cyan);">0 Hz</span>
+        <span id="rateLabel" style="font-size: 11px; color: var(--cyan); font-family: monospace;">0 Hz</span>
       </div>
 
-      <!-- SVG Rendering of the U-Arch PCB (Forward is UP / Leading Edge) -->
+      <!-- SVG Rendering of the U-Arch PCB (Forward is UP) -->
       <div class="uarch-container">
         <svg class="uarch-svg" viewBox="-70 -44 140 88">
-          <!-- PCB outline (U-Arch opens downwards towards wheels, front edge is at the top) -->
           <path d="M -60 38 L -60 -28 L 60 -28 L 60 38 L 45 38 L 45 8 L 38 -5 L 35 -15 L -35 -15 L -38 -5 L -45 8 L -45 38 Z"
                 fill="none" stroke="#1a2333" stroke-width="1.2" stroke-dasharray="2,2" />
 
-          <!-- Forward orientation arrow & labels -->
-          <text x="0" y="-36" font-size="3.2" fill="#38bdf8" font-weight="800" text-anchor="middle">▲ FORWARD (DIRECTION OF TRAVEL)</text>
+          <text x="0" y="-36" font-size="3.2" fill="#38bdf8" font-weight="800" text-anchor="middle">▲ FORWARD (TRAVEL DIRECTION)</text>
           <text x="0" y="-29" font-size="2.6" fill="#10b981" font-weight="700" text-anchor="middle">FRONT 8 SENSOR ROW</text>
-
-          <!-- Zone Indicators -->
           <text x="-52.2" y="39" font-size="2.6" fill="#c084fc" font-weight="700" text-anchor="middle">L-WING</text>
           <text x="52.2"  y="39" font-size="2.6" fill="#c084fc" font-weight="700" text-anchor="middle">R-WING</text>
 
-          <!-- Sensors: exact CAD coordinates with Forward UP -->
           <g id="sensorsGroup">
-            <!-- Front 8 Row (Leading forward edge, Y = -22.0) -->
-            <!-- S04 --> <circle id="s4" class="sensor-node sensor-white" cx="-35.0" cy="-22.0" r="4.0"><title>S04: Front Row L4</title></circle>
-            <!-- S05 --> <circle id="s5" class="sensor-node sensor-white" cx="-25.0" cy="-22.0" r="4.0"><title>S05: Front Row L3</title></circle>
-            <!-- S06 --> <circle id="s6" class="sensor-node sensor-white" cx="-15.0" cy="-22.0" r="4.0"><title>S06: Front Row L2</title></circle>
-            <!-- S07 --> <circle id="s7" class="sensor-node sensor-white" cx="-5.0"  cy="-22.0" r="4.0"><title>S07: Front Center L1</title></circle>
-            <!-- S08 --> <circle id="s8" class="sensor-node sensor-white" cx="5.0"   cy="-22.0" r="4.0"><title>S08: Front Center R1</title></circle>
-            <!-- S09 --> <circle id="s9" class="sensor-node sensor-white" cx="15.0"  cy="-22.0" r="4.0"><title>S09: Front Row R2</title></circle>
-            <!-- S10 --> <circle id="s10" class="sensor-node sensor-white" cx="25.0" cy="-22.0" r="4.0"><title>S10: Front Row R3</title></circle>
-            <!-- S11 --> <circle id="s11" class="sensor-node sensor-white" cx="35.0" cy="-22.0" r="4.0"><title>S11: Front Row R4</title></circle>
+            <!-- Front 8 Row -->
+            <circle id="s4"  class="sensor-node sensor-white" cx="-35.0" cy="-22.0" r="4.0"><title>S04</title></circle>
+            <circle id="s5"  class="sensor-node sensor-white" cx="-25.0" cy="-22.0" r="4.0"><title>S05</title></circle>
+            <circle id="s6"  class="sensor-node sensor-white" cx="-15.0" cy="-22.0" r="4.0"><title>S06</title></circle>
+            <circle id="s7"  class="sensor-node sensor-white" cx="-5.0"  cy="-22.0" r="4.0"><title>S07</title></circle>
+            <circle id="s8"  class="sensor-node sensor-white" cx="5.0"   cy="-22.0" r="4.0"><title>S08</title></circle>
+            <circle id="s9"  class="sensor-node sensor-white" cx="15.0"  cy="-22.0" r="4.0"><title>S09</title></circle>
+            <circle id="s10" class="sensor-node sensor-white" cx="25.0"  cy="-22.0" r="4.0"><title>S10</title></circle>
+            <circle id="s11" class="sensor-node sensor-white" cx="35.0"  cy="-22.0" r="4.0"><title>S11</title></circle>
 
-            <!-- Bevels (Angled back towards rear) -->
-            <!-- S03 --> <circle id="s3"  class="sensor-node sensor-white" cx="-43.6" cy="-9.7" r="4.0"><title>S03: Left Bevel Front</title></circle>
-            <!-- S12 --> <circle id="s12" class="sensor-node sensor-white" cx="43.6"  cy="-9.7" r="4.0"><title>S12: Right Bevel Front</title></circle>
-            <!-- S02 --> <circle id="s2"  class="sensor-node sensor-white" cx="-52.2" cy="2.6"  r="4.0"><title>S02: Left Bevel Rear</title></circle>
-            <!-- S13 --> <circle id="s13" class="sensor-node sensor-white" cx="52.2"  cy="2.6"  r="4.0"><title>S13: Right Bevel Rear</title></circle>
+            <!-- Bevels -->
+            <circle id="s3"  class="sensor-node sensor-white" cx="-43.6" cy="-9.7" r="4.0"><title>S03</title></circle>
+            <circle id="s12" class="sensor-node sensor-white" cx="43.6"  cy="-9.7" r="4.0"><title>S12</title></circle>
+            <circle id="s2"  class="sensor-node sensor-white" cx="-52.2" cy="2.6"  r="4.0"><title>S02</title></circle>
+            <circle id="s13" class="sensor-node sensor-white" cx="52.2"  cy="2.6"  r="4.0"><title>S13</title></circle>
 
-            <!-- Wings (Trailing flanks towards rear) -->
-            <!-- S01 --> <circle id="s1"  class="sensor-node sensor-white" cx="-52.2" cy="17.6" r="4.0"><title>S01: Left Wing Inner</title></circle>
-            <!-- S14 --> <circle id="s14" class="sensor-node sensor-white" cx="52.2"  cy="17.6" r="4.0"><title>S14: Right Wing Inner</title></circle>
-            <!-- S00 --> <circle id="s0"  class="sensor-node sensor-white" cx="-52.2" cy="32.6" r="4.0"><title>S00: Left Wing Outer</title></circle>
-            <!-- S15 --> <circle id="s15" class="sensor-node sensor-white" cx="52.2"  cy="32.6" r="4.0"><title>S15: Right Wing Outer</title></circle>
+            <!-- Wings -->
+            <circle id="s1"  class="sensor-node sensor-white" cx="-52.2" cy="17.6" r="4.0"><title>S01</title></circle>
+            <circle id="s14" class="sensor-node sensor-white" cx="52.2"  cy="17.6" r="4.0"><title>S14</title></circle>
+            <circle id="s0"  class="sensor-node sensor-white" cx="-52.2" cy="32.6" r="4.0"><title>S00</title></circle>
+            <circle id="s15" class="sensor-node sensor-white" cx="52.2"  cy="32.6" r="4.0"><title>S15</title></circle>
 
-            <!-- Sensor Numeric Labels -->
+            <!-- Labels -->
             <text x="-35.0" y="-22.0" class="sensor-text">04</text>
             <text x="-25.0" y="-22.0" class="sensor-text">05</text>
             <text x="-15.0" y="-22.0" class="sensor-text">06</text>
@@ -315,12 +636,10 @@
             <text x="15.0"  y="-22.0" class="sensor-text">09</text>
             <text x="25.0"  y="-22.0" class="sensor-text">10</text>
             <text x="35.0"  y="-22.0" class="sensor-text">11</text>
-
             <text x="-43.6" y="-9.7"  class="sensor-text">03</text>
             <text x="43.6"  y="-9.7"  class="sensor-text">12</text>
             <text x="-52.2" y="2.6"   class="sensor-text">02</text>
             <text x="52.2"  y="2.6"   class="sensor-text">13</text>
-
             <text x="-52.2" y="17.6"  class="sensor-text">01</text>
             <text x="52.2"  y="17.6"  class="sensor-text">14</text>
             <text x="-52.2" y="32.6"  class="sensor-text">00</text>
@@ -332,10 +651,10 @@
       <!-- Raw ADC Bars (Contiguous 16-Channel Array) -->
       <div class="bars-container-title">
         <span>16-CHANNEL RAW ADC SPECTRUM (0 – 4095)</span>
-        <span style="color: #64748b;">DASH: 50% SCHMITT THRESHOLD</span>
+        <span id="threshLabel">ENTER THRESH: 500</span>
       </div>
       <div class="bars-grid" id="barsGrid">
-        <!-- Generated dynamically by JS in single 16-column continuous row -->
+        <!-- Generated dynamically by JS -->
       </div>
     </div>
 
@@ -346,20 +665,40 @@
       <!-- Stats row -->
       <div class="stats-row">
         <div class="stat-box">
-          <div class="stat-label">Robot State</div>
-          <div class="state-badge" id="navStateBadge">DISCONNECTED</div>
+          <div class="stat-label">ROBOT STATE</div>
+          <div class="stat-value" id="navStateText" style="font-size: 13px; color: var(--cyan);">DISCONNECTED</div>
         </div>
         <div class="stat-box">
-          <div class="stat-label">Centroid Error</div>
+          <div class="stat-label">CENTROID ERROR</div>
           <div class="stat-value" id="valError">0.0 mm</div>
         </div>
         <div class="stat-box">
-          <div class="stat-label">Left Enc</div>
+          <div class="stat-label">LEFT ENC</div>
           <div class="stat-value" id="valLeftEnc">0</div>
         </div>
         <div class="stat-box">
-          <div class="stat-label">Right Enc</div>
+          <div class="stat-label">RIGHT ENC</div>
           <div class="stat-value" id="valRightEnc">0</div>
+        </div>
+      </div>
+
+      <!-- Live PWM Outputs -->
+      <div class="pwm-grid">
+        <div class="pwm-box">
+          <div class="stat-label" style="display:flex; justify-content:space-between;">
+            <span>LEFT MOTOR PWM</span><span id="valLeftPwm" style="color:var(--cyan); font-family:monospace;">0</span>
+          </div>
+          <div class="pwm-bar-track">
+            <div class="pwm-bar-fill" id="barLeftPwm"></div>
+          </div>
+        </div>
+        <div class="pwm-box">
+          <div class="stat-label" style="display:flex; justify-content:space-between;">
+            <span>RIGHT MOTOR PWM</span><span id="valRightPwm" style="color:var(--cyan); font-family:monospace;">0</span>
+          </div>
+          <div class="pwm-bar-track">
+            <div class="pwm-bar-fill" id="barRightPwm"></div>
+          </div>
         </div>
       </div>
 
@@ -388,21 +727,19 @@
       </div>
 
       <!-- Autonomous Feature Flags Cluster -->
-      <div class="flags-card">
-        <div class="card-subtitle">AUTONOMOUS FEATURE FLAGS & LATCHES</div>
-        <div class="flags-row">
-          <div class="flag-badge" id="flagLWing">L-WING [90°]</div>
-          <div class="flag-badge" id="flagRWing">R-WING [90°]</div>
-          <div class="flag-badge" id="flagInverted">INVERTED ZONE</div>
-          <div class="flag-badge" id="flagBench">BENCH DIAG</div>
-          <div class="flag-badge" id="flagEStop">E-STOP</div>
-        </div>
+      <div class="flags-row">
+        <div class="flag-badge" id="flagLWing">L-WING [90°]</div>
+        <div class="flag-badge" id="flagRWing">R-WING [90°]</div>
+        <div class="flag-badge" id="flagInverted">INVERTED ZONE</div>
+        <div class="flag-badge" id="flagBench">BENCH DIAG</div>
+        <div class="flag-badge" id="flagCal">CALIBRATING</div>
+        <div class="flag-badge" id="flagArmed">MOTORS ARMED</div>
       </div>
 
       <!-- Oscilloscope -->
-      <div class="card-title" style="margin-top: 10px;">
+      <div class="card-title" style="margin-top: 4px; padding-bottom: 4px;">
         <span>Real-Time PID Error Waveform</span>
-        <span style="font-size: 11px; color: var(--text-muted);">±55.0 mm Range</span>
+        <span style="font-size: 11px; color: var(--text-muted); font-family: monospace;">±55.0 mm Range</span>
       </div>
       <div class="canvas-container">
         <canvas id="pidChart"></canvas>
@@ -411,16 +748,71 @@
 
   </div>
 
-  <!-- Bottom: Structured Parameters Tuning Panel -->
+  <!-- Modes & WASD Panel -->
   <div class="card">
-    <div class="card-title">Robot Modes & Dynamic Parameters Tuning</div>
+    <div class="card-title">
+      <span>Operational Mode & Mission Profiles</span>
+      <span style="font-size: 11px; color: var(--text-muted);">Changing modes automatically disarms motors</span>
+    </div>
 
-    <!-- Mode Selector -->
     <div class="mode-select-row">
       <div class="mode-pill active" data-mode="0">AUTONOMOUS TRACK RUN</div>
       <div class="mode-pill" data-mode="1">BENCH DIAGNOSTIC (MOTORS 0)</div>
       <div class="mode-pill" data-mode="2">MOTOR OPEN-LOOP TEST</div>
-      <div class="mode-pill" id="toggleInv" style="border-style: dashed;">INVERTED ZONE: OFF</div>
+      <div class="mode-pill" data-mode="3">🎮 WASD MANUAL DRIVE</div>
+      <div class="mode-pill action-pill" id="toggleInv">INVERTED ZONE: OFF</div>
+      <div class="mode-pill action-pill" id="toggleSkip">START BOX EXIT (#31): OFF</div>
+      <div class="mode-pill action-pill" id="btnCalStart">🎯 CALIBRATE 5s</div>
+      <div class="mode-pill action-pill" id="btnCalDefault">↺ DEFAULT CAL</div>
+    </div>
+
+    <!-- WASD Interactive Pad (Visible when mode 3 is selected) -->
+    <div class="wasd-deck" id="wasdDeck">
+      <div class="wasd-disarmed-banner" id="wasdBanner">
+        <span>🔒 Motors are currently <strong>DISARMED</strong>. Press <strong>▶ ARM / START</strong> above or drive keys will stay inactive.</span>
+        <span style="font-size: 10.5px; opacity: 0.8;">Keys: W (Fwd), S (Rev), A (Left), D (Right), SHIFT (Boost), SPACE (Stop)</span>
+      </div>
+
+      <div class="wasd-pad-container">
+        <div class="keycap shift-key" id="keyShift">
+          <span>SHIFT</span>
+          <span class="subtext">BOOST</span>
+        </div>
+
+        <div class="wasd-cluster">
+          <div class="keycap" id="keyW">
+            <span>W</span>
+            <span class="subtext">FWD</span>
+          </div>
+          <div class="wasd-row">
+            <div class="keycap" id="keyA">
+              <span>A</span>
+              <span class="subtext">LEFT</span>
+            </div>
+            <div class="keycap" id="keyS">
+              <span>S</span>
+              <span class="subtext">REV</span>
+            </div>
+            <div class="keycap" id="keyD">
+              <span>D</span>
+              <span class="subtext">RIGHT</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="keycap space-key" id="keySpace">
+          <span>SPACEBAR</span>
+          <span class="subtext">E-STOP / DISARM</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dynamic Parameters Tuning Panel -->
+  <div class="card">
+    <div class="card-title">
+      <span>Dynamic Parameters Tuning</span>
+      <span style="font-size: 11px; color: var(--text-muted);">Auto-synced from robot NVS on connect</span>
     </div>
 
     <div class="tuning-sections">
@@ -430,19 +822,33 @@
         <div class="speeds-grid">
           <div class="control-item">
             <div class="control-header"><span>BASE SPEED</span><span class="control-val" id="valBase">140</span></div>
-            <input type="range" id="sliderBase" min="0" max="255" value="140">
+            <input type="range" id="sliderBase" min="60" max="255" value="140">
           </div>
           <div class="control-item">
             <div class="control-header"><span>MIN SPEED (CORNERS)</span><span class="control-val" id="valMin">80</span></div>
-            <input type="range" id="sliderMin" min="0" max="255" value="80">
+            <input type="range" id="sliderMin" min="40" max="200" value="80">
           </div>
           <div class="control-item">
-            <div class="control-header"><span>MAX SPEED (BURST)</span><span class="control-val" id="valMax">220</span></div>
-            <input type="range" id="sliderMax" min="0" max="255" value="220">
+            <div class="control-header"><span>MAX SPEED (BURST / SHIFT)</span><span class="control-val" id="valMax">220</span></div>
+            <input type="range" id="sliderMax" min="100" max="255" value="220">
           </div>
           <div class="control-item">
             <div class="control-header"><span>TURN SPEED (PIVOT)</span><span class="control-val" id="valTurn">120</span></div>
-            <input type="range" id="sliderTurn" min="0" max="255" value="120">
+            <input type="range" id="sliderTurn" min="60" max="220" value="120">
+          </div>
+        </div>
+      </div>
+
+      <!-- Detection & Thresholds -->
+      <div>
+        <div class="tuning-cluster-title">🔍 SENSING & LINE DETECTION</div>
+        <div class="speeds-grid">
+          <div class="control-item">
+            <div class="control-header"><span>BLACK LINE THRESHOLD</span><span class="control-val" id="valThr">500</span></div>
+            <input type="range" id="sliderThr" min="150" max="800" step="10" value="500">
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted); padding: 8px 10px; background: #090d16; border: 1px solid #1e293b; border-radius: 6px; line-height: 1.5;">
+            Normalizes 0 (white) to 1000 (black). Schmitt trigger activates at threshold and releases at threshold - 150. Lower values detect faint lines; higher values reject glare.
           </div>
         </div>
       </div>
@@ -489,6 +895,9 @@
     </div>
   </div>
 
+  <!-- Toast Notification -->
+  <div class="toast" id="toastBox">Notification message</div>
+
   <!-- JavaScript Logic -->
   <script>
     //generate contiguous 16-column ADC bar array with zone tags
@@ -508,14 +917,64 @@
       barsGrid.appendChild(col);
     }
 
-    //webserial communication
+    //webserial communication & serialized write queue
     let port = null;
     let readLoopActive = false;
     let rxCount = 0;
     let lastRxTime = performance.now();
+    let lastPacketReceivedTime = 0;
+    let lastLocalEditTime = 0;
 
     const btnConnect = document.getElementById('btnConnect');
-    const connBadge = document.getElementById('connBadge');
+    const badgeUsb = document.getElementById('badgeUsb');
+    const badgeRf = document.getElementById('badgeRf');
+    const badgeArm = document.getElementById('badgeArm');
+
+    const writeQueue = [];
+    let isWriting = false;
+
+    async function processWriteQueue() {
+      if (isWriting || !port || !port.writable) return;
+      isWriting = true;
+
+      try {
+        while (writeQueue.length > 0 && port && port.writable) {
+          const item = writeQueue.shift();
+          const encoder = new TextEncoder();
+          const line = JSON.stringify(item) + "\n";
+          const writer = port.writable.getWriter();
+          try {
+            await writer.write(encoder.encode(line));
+          } finally {
+            writer.releaseLock();
+          }
+        }
+      } catch (err) {
+        console.error("Write queue error:", err);
+      } finally {
+        isWriting = false;
+      }
+    }
+
+    function sendCommand(obj, isPriority = false) {
+      if (!port) return;
+
+      //coalesce manual drive packets if older one is queued
+      if (obj.cmd === 6) {
+        const existingIdx = writeQueue.findIndex(item => item.cmd === 6);
+        if (existingIdx !== -1) {
+          writeQueue[existingIdx] = obj;
+          return;
+        }
+      }
+
+      if (isPriority) {
+        writeQueue.unshift(obj);
+      } else {
+        writeQueue.push(obj);
+      }
+      processWriteQueue();
+    }
 
     async function connectSerial() {
       if (!("serial" in navigator)) {
@@ -527,35 +986,45 @@
         port = await navigator.serial.requestPort();
         await port.open({ baudRate: 115200 });
 
-        btnConnect.classList.add('connected');
-        btnConnect.textContent = "✔ CONNECTED";
-        connBadge.textContent = "CONNECTED (115200)";
-        connBadge.style.background = "#065f46";
-        connBadge.style.color = "#34d399";
+        btnConnect.classList.add('is-connected');
+        btnConnect.textContent = "🔌 DISCONNECT";
+        badgeUsb.textContent = "USB: CONNECTED";
+        badgeUsb.classList.add('connected');
 
         readLoopActive = true;
         readSerialLoop();
+
+        //request robot config immediately on connect
+        setTimeout(() => sendCommand({ cmd: 7 }), 300);
       } catch (err) {
-        console.error("Serial error:", err);
+        console.error("Serial connect error:", err);
       }
     }
 
-    let writeQueue = Promise.resolve();
-    function sendCommand(obj) {
-      if (!port || !port.writable) return Promise.resolve();
-      writeQueue = writeQueue.then(async () => {
-        try {
-          const encoder = new TextEncoder();
-          const line = JSON.stringify(obj) + "\n";
-          const writer = port.writable.getWriter();
-          await writer.write(encoder.encode(line));
-          writer.releaseLock();
-        } catch (err) {
-          console.error("WebSerial send error:", err);
+    async function disconnectSerial() {
+      readLoopActive = false;
+      try {
+        if (port) {
+          await port.close();
+          port = null;
         }
-      });
-      return writeQueue;
+      } catch (err) {
+        console.error("Disconnect error:", err);
+      }
+
+      btnConnect.classList.remove('is-connected');
+      btnConnect.textContent = "⚡ CONNECT USB";
+      badgeUsb.textContent = "USB: DISCONNECTED";
+      badgeUsb.classList.remove('connected');
+      badgeRf.textContent = "ROBOT RF: NO SIGNAL";
+      badgeRf.classList.remove('connected');
+      badgeRf.classList.remove('danger');
     }
+
+    btnConnect.addEventListener('click', () => {
+      if (port) disconnectSerial();
+      else connectSerial();
+    });
 
     async function readSerialLoop() {
       const textDecoder = new TextDecoderStream();
@@ -570,14 +1039,16 @@
           if (value) {
             buffer += value;
             let lines = buffer.split("\n");
-            buffer = lines.pop(); //keep trailing piece
+            buffer = lines.pop();
 
             for (const line of lines) {
               const clean = line.trim();
               if (clean.startsWith("{")) {
                 try {
                   const data = JSON.parse(clean);
-                  handleTelemetry(data);
+                  if (data.t === "telem") handleTelemetry(data);
+                  else if (data.t === "cfg") handleConfig(data);
+                  else if (data.t === "ack") handleAck(data);
                 } catch (e) {}
               }
             }
@@ -590,6 +1061,21 @@
       }
     }
 
+    //toast notification
+    const toastBox = document.getElementById('toastBox');
+    let toastTimer = null;
+    function showToast(msg) {
+      toastBox.textContent = msg;
+      toastBox.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toastBox.classList.remove('show'), 2500);
+    }
+
+    function handleAck(data) {
+      if (data.cmd === 1) showToast("⏹ Robot Disarmed (Motors Stopped)");
+      if (data.cmd === 2) showToast("▶ Robot Armed");
+    }
+
     //oscilloscope buffer
     const errorHistory = new Array(220).fill(0);
     const canvas = document.getElementById('pidChart');
@@ -598,7 +1084,6 @@
     function drawChart() {
       const w = canvas.width = canvas.clientWidth;
       const h = canvas.height = canvas.clientHeight;
-
       ctx.clearRect(0, 0, w, h);
 
       //grid lines
@@ -628,7 +1113,6 @@
 
       const step = w / (errorHistory.length - 1);
       for (let i = 0; i < errorHistory.length; i++) {
-        //range -5500 to +5500 maps to h to 0
         const norm = (errorHistory[i] + 5500) / 11000;
         const y = h - (norm * h);
         if (i === 0) ctx.moveTo(0, y);
@@ -638,18 +1122,15 @@
       ctx.shadowBlur = 0;
     }
 
-    //handle incoming telemetry packet
+    //telemetry processing
     function handleTelemetry(data) {
-      if (data.t === "ack") {
-        console.log("Dongle ACK:", data);
-        return;
-      }
-      if (data.t !== "telem") return;
-
+      lastPacketReceivedTime = performance.now();
       rxCount++;
       const now = performance.now();
       if (now - lastRxTime >= 1000) {
         document.getElementById('rateLabel').textContent = `${rxCount} Hz`;
+        badgeRf.textContent = `ROBOT RF: ${rxCount} Hz`;
+        badgeRf.className = "status-badge connected";
         rxCount = 0;
         lastRxTime = now;
       }
@@ -674,18 +1155,24 @@
       }
 
       //update odometry & state
-      const errMm = data.err / 100;
+      const errMm = (data.err || 0) / 100;
       document.getElementById('valError').textContent = `${errMm > 0 ? '+' : ''}${errMm.toFixed(1)} mm`;
-      document.getElementById('valLeftEnc').textContent = data.l;
-      document.getElementById('valRightEnc').textContent = data.r;
+      document.getElementById('valLeftEnc').textContent = data.l || 0;
+      document.getElementById('valRightEnc').textContent = data.r || 0;
+      document.getElementById('navStateText').textContent = data.st || "UNKNOWN";
 
-      const stateBadge = document.getElementById('navStateBadge');
-      stateBadge.textContent = data.st;
-      if (data.st === "STOPPED") {
-        stateBadge.className = "state-badge badge-stopped";
-      } else {
-        stateBadge.className = "state-badge badge-normal";
-      }
+      //pwm outputs
+      const lpwm = data.lpwm || 0;
+      const rpwm = data.rpwm || 0;
+      document.getElementById('valLeftPwm').textContent = lpwm;
+      document.getElementById('valRightPwm').textContent = rpwm;
+
+      const barL = document.getElementById('barLeftPwm');
+      const barR = document.getElementById('barRightPwm');
+      barL.style.width = `${Math.min(100, (Math.abs(lpwm) / 255) * 100)}%`;
+      barL.classList.toggle('reverse', lpwm < 0);
+      barR.style.width = `${Math.min(100, (Math.abs(rpwm) / 255) * 100)}%`;
+      barR.classList.toggle('reverse', rpwm < 0);
 
       //steering needle (-55mm to +55mm mapped to 0% to 100%)
       const clampedErr = Math.max(-55, Math.min(55, errMm));
@@ -695,29 +1182,123 @@
       const devText = document.getElementById('deviationValText');
       if (devText) devText.textContent = `${errMm > 0 ? '+' : ''}${errMm.toFixed(1)} mm`;
 
-      //feature flags: bit0=bench, bit1=mtest, bit2=inv, bit3=estop, bit4=lwing, bit5=rwing
+      //feature flags: bit0=bench, bit1=mtest, bit2=inv, bit3=armed, bit4=lwing, bit5=rwing, bit6=cal
       const flags = data.flags || 0;
+      const isArmed = (flags & 0x08) !== 0;
+      const isCalibrating = (flags & 0x40) !== 0;
+
       document.getElementById('flagLWing').classList.toggle('active-wing', (flags & 0x10) !== 0);
       document.getElementById('flagRWing').classList.toggle('active-wing', (flags & 0x20) !== 0);
       document.getElementById('flagInverted').classList.toggle('active-inv', (flags & 0x04) !== 0);
       document.getElementById('flagBench').classList.toggle('active-inv', (flags & 0x01) !== 0);
-      document.getElementById('flagEStop').classList.toggle('active-stop', (flags & 0x08) !== 0);
+      document.getElementById('flagCal').classList.toggle('active-cal', isCalibrating);
+      document.getElementById('flagArmed').classList.toggle('active-wing', isArmed);
+
+      //arm badge update
+      if (isArmed) {
+        badgeArm.textContent = "ARMED (ACTIVE)";
+        badgeArm.className = "status-badge armed";
+        document.getElementById('wasdBanner').style.display = "none";
+      } else {
+        badgeArm.textContent = "DISARMED (MOTORS OFF)";
+        badgeArm.className = "status-badge";
+        document.getElementById('wasdBanner').style.display = "flex";
+      }
 
       //update chart
-      errorHistory.push(data.err);
+      errorHistory.push(data.err || 0);
       errorHistory.shift();
       drawChart();
     }
 
-    //controls sync
+    //check RF link timeout every 300ms
+    setInterval(() => {
+      if (port && performance.now() - lastPacketReceivedTime > 700) {
+        badgeRf.textContent = "ROBOT RF: NO SIGNAL";
+        badgeRf.className = "status-badge danger";
+      }
+    }, 300);
+
+    //config sync handler
+    function handleConfig(cfg) {
+      //if user recently adjusted a slider locally, don't overwrite with old in-flight values
+      if (performance.now() - lastLocalEditTime < 600) return;
+
+      if (cfg.base !== undefined) {
+        document.getElementById('sliderBase').value = cfg.base;
+        document.getElementById('valBase').textContent = cfg.base;
+      }
+      if (cfg.min !== undefined) {
+        document.getElementById('sliderMin').value = cfg.min;
+        document.getElementById('valMin').textContent = cfg.min;
+      }
+      if (cfg.max !== undefined) {
+        document.getElementById('sliderMax').value = cfg.max;
+        document.getElementById('valMax').textContent = cfg.max;
+      }
+      if (cfg.turn !== undefined) {
+        document.getElementById('sliderTurn').value = cfg.turn;
+        document.getElementById('valTurn').textContent = cfg.turn;
+      }
+      if (cfg.thr !== undefined) {
+        document.getElementById('sliderThr').value = cfg.thr;
+        document.getElementById('valThr').textContent = cfg.thr;
+        document.getElementById('threshLabel').textContent = `ENTER THRESH: ${cfg.thr}`;
+      }
+      if (cfg.kp !== undefined) {
+        document.getElementById('sliderKp').value = cfg.kp.toFixed(3);
+        document.getElementById('valKp').textContent = cfg.kp.toFixed(3);
+      }
+      if (cfg.kd !== undefined) {
+        document.getElementById('sliderKd').value = cfg.kd.toFixed(3);
+        document.getElementById('valKd').textContent = cfg.kd.toFixed(3);
+      }
+      if (cfg.enc !== undefined) {
+        document.getElementById('sliderEncKp').value = cfg.enc.toFixed(1);
+        document.getElementById('valEncKp').textContent = cfg.enc.toFixed(1);
+      }
+
+      if (cfg.mode !== undefined) {
+        currentMode = cfg.mode;
+        document.querySelectorAll('.mode-pill[data-mode]').forEach(p => {
+          p.classList.toggle('active', parseInt(p.getAttribute('data-mode')) === currentMode);
+        });
+        document.getElementById('wasdDeck').classList.toggle('visible', currentMode === 3);
+      }
+
+      if (cfg.inv !== undefined) {
+        invActive = (cfg.inv !== 0);
+        const toggle = document.getElementById('toggleInv');
+        toggle.textContent = `INVERTED ZONE: ${invActive ? 'ON' : 'OFF'}`;
+        toggle.classList.toggle('active', invActive);
+      }
+
+      if (cfg.skip !== undefined) {
+        skipActive = (cfg.skip !== 0);
+        const toggle = document.getElementById('toggleSkip');
+        toggle.textContent = `START BOX EXIT (#31): ${skipActive ? 'OFF' : 'ON'}`;
+        toggle.classList.toggle('active', !skipActive);
+      }
+
+      //toast ack event
+      if (cfg.ack === 1) showToast("✔ Parameters Updated Live");
+      else if (cfg.ack === 2) showToast("💾 Saved Parameters to NVS Flash");
+      else if (cfg.ack === 3) showToast("🎯 Calibration Sweep Complete");
+      else if (cfg.ack === 5) showToast("↺ Restored Bench Calibration Defaults");
+      else if (cfg.ack === 6) showToast("🔄 Wheel Encoders Reset to 0");
+    }
+
+    //modes & feature toggles
     let currentMode = 0;
     let invActive = false;
+    let skipActive = true; //default true: skip blind start exit
 
     document.querySelectorAll('.mode-pill[data-mode]').forEach(pill => {
       pill.addEventListener('click', () => {
         document.querySelectorAll('.mode-pill[data-mode]').forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
         currentMode = parseInt(pill.getAttribute('data-mode'));
+        document.getElementById('wasdDeck').classList.toggle('visible', currentMode === 3);
         sendLiveTunings();
       });
     });
@@ -730,89 +1311,265 @@
       sendLiveTunings();
     });
 
-    function flashButton(btnId, msg, bg = "#10b981") {
-      const btn = document.getElementById(btnId);
-      if (!btn) return;
-      if (!btn.dataset.origText) btn.dataset.origText = btn.textContent;
-      btn.textContent = msg;
-      btn.style.background = bg;
-      btn.style.color = "#000";
-      clearTimeout(btn._resetTimer);
-      btn._resetTimer = setTimeout(() => {
-        btn.textContent = btn.dataset.origText;
-        btn.style.background = "";
-        btn.style.color = "";
-      }, 900);
-    }
+    const toggleSkip = document.getElementById('toggleSkip');
+    toggleSkip.addEventListener('click', () => {
+      skipActive = !skipActive;
+      toggleSkip.textContent = `START BOX EXIT (#31): ${skipActive ? 'OFF' : 'ON'}`;
+      toggleSkip.classList.toggle('active', !skipActive);
+      sendLiveTunings();
+    });
 
-    let debounceTimer = null;
-    function debouncedSendLiveTunings() {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        sendLiveTunings(true);
-      }, 80);
-    }
+    document.getElementById('btnCalStart').addEventListener('click', () => {
+      sendCommand({ cmd: 8 });
+      showToast("🎯 Calibration sweep started (5s)...");
+    });
+    document.getElementById('btnCalDefault').addEventListener('click', () => {
+      sendCommand({ cmd: 9 });
+    });
 
-    //slider label binding
-    const bindSlider = (id, valId) => {
+    //slider live binding & debouncing
+    let sliderDebounceTimer = null;
+    const bindSlider = (id, valId, isFloat = false, decimals = 3) => {
       const slider = document.getElementById(id);
       const val = document.getElementById(valId);
       slider.addEventListener('input', () => {
-        val.textContent = slider.value;
-        debouncedSendLiveTunings();
+        val.textContent = isFloat ? parseFloat(slider.value).toFixed(decimals) : slider.value;
+        if (id === 'sliderThr') {
+          document.getElementById('threshLabel').textContent = `ENTER THRESH: ${slider.value}`;
+        }
+        lastLocalEditTime = performance.now();
+
+        //debounce live update to 100ms
+        clearTimeout(sliderDebounceTimer);
+        sliderDebounceTimer = setTimeout(sendLiveTunings, 100);
       });
       slider.addEventListener('change', () => {
-        sendLiveTunings(false);
+        sendLiveTunings();
       });
     };
+
     bindSlider('sliderBase', 'valBase');
     bindSlider('sliderMin', 'valMin');
     bindSlider('sliderMax', 'valMax');
     bindSlider('sliderTurn', 'valTurn');
-    bindSlider('sliderKp', 'valKp');
-    bindSlider('sliderKd', 'valKd');
-    bindSlider('sliderEncKp', 'valEncKp');
+    bindSlider('sliderThr', 'valThr');
+    bindSlider('sliderKp', 'valKp', true, 3);
+    bindSlider('sliderKd', 'valKd', true, 3);
+    bindSlider('sliderEncKp', 'valEncKp', true, 1);
 
-    function sendLiveTunings(silent = false) {
-      if (!silent) flashButton('btnApply', '✔ TUNINGS APPLIED');
+    function sendLiveTunings() {
+      lastLocalEditTime = performance.now();
       sendCommand({
         cmd: 3,
         base: parseInt(document.getElementById('sliderBase').value),
         min:  parseInt(document.getElementById('sliderMin').value),
         max:  parseInt(document.getElementById('sliderMax').value),
         turn: parseInt(document.getElementById('sliderTurn').value),
+        thr:  parseInt(document.getElementById('sliderThr').value),
         kp:   parseFloat(document.getElementById('sliderKp').value),
         kd:   parseFloat(document.getElementById('sliderKd').value),
         enc:  parseFloat(document.getElementById('sliderEncKp').value),
         mode: currentMode,
-        inv:  invActive ? 1 : 0
+        inv:  invActive ? 1 : 0,
+        skip: skipActive ? 1 : 0
       });
     }
 
-    document.getElementById('btnApply').addEventListener('click', () => sendLiveTunings(false));
+    document.getElementById('btnApply').addEventListener('click', sendLiveTunings);
     document.getElementById('btnSave').addEventListener('click', () => {
-      sendCommand({ cmd: 4 });
-      flashButton('btnSave', '✔ COMMITTED TO FLASH');
+      sendLiveTunings();
+      setTimeout(() => sendCommand({ cmd: 4 }), 80);
     });
-    document.getElementById('btnResetEnc').addEventListener('click', () => {
-      sendCommand({ cmd: 5 });
-      flashButton('btnResetEnc', '✔ ENCODERS ZEROED');
-    });
+    document.getElementById('btnResetEnc').addEventListener('click', () => sendCommand({ cmd: 5 }));
 
     //emergency stop & start
-    const triggerStop = () => sendCommand({ cmd: 1 });
-    const triggerStart = () => sendCommand({ cmd: 2 });
+    const triggerStop = () => sendCommand({ cmd: 1 }, true);
+    const triggerStart = () => sendCommand({ cmd: 2 }, true);
 
     document.getElementById('btnEstop').addEventListener('click', triggerStop);
     document.getElementById('btnStart').addEventListener('click', triggerStart);
-    btnConnect.addEventListener('click', connectSerial);
 
-    //spacebar e-stop shortcut
-    window.addEventListener('keydown', (e) => {
-      if (e.code === "Space" && e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
-        e.preventDefault();
-        triggerStop();
+    //WASD manual drive engine
+    const keysDown = { w: false, a: false, s: false, d: false, shift: false };
+    let wasdInterval = null;
+
+    function calcMotorSpeeds() {
+      const base = parseInt(document.getElementById('sliderBase').value);
+      const max  = parseInt(document.getElementById('sliderMax').value);
+      const turn = parseInt(document.getElementById('sliderTurn').value);
+
+      const forwardSpeed = keysDown.shift ? max : base;
+      let left = 0;
+      let right = 0;
+
+      const fwd = keysDown.w && !keysDown.s;
+      const rev = keysDown.s && !keysDown.w;
+      const leftTurn = keysDown.a && !keysDown.d;
+      const rightTurn = keysDown.d && !keysDown.a;
+
+      if (fwd) {
+        if (leftTurn) {
+          left = Math.max(-forwardSpeed / 2, forwardSpeed - turn);
+          right = forwardSpeed;
+        } else if (rightTurn) {
+          left = forwardSpeed;
+          right = Math.max(-forwardSpeed / 2, forwardSpeed - turn);
+        } else {
+          left = forwardSpeed;
+          right = forwardSpeed;
+        }
+      } else if (rev) {
+        if (leftTurn) {
+          left = -Math.max(-forwardSpeed / 2, forwardSpeed - turn);
+          right = -forwardSpeed;
+        } else if (rightTurn) {
+          left = -forwardSpeed;
+          right = -Math.max(-forwardSpeed / 2, forwardSpeed - turn);
+        } else {
+          left = -forwardSpeed;
+          right = -forwardSpeed;
+        }
+      } else if (leftTurn) {
+        //zero radius pivot left
+        left = -turn;
+        right = turn;
+      } else if (rightTurn) {
+        //zero radius pivot right
+        left = turn;
+        right = -turn;
       }
+
+      return { left: Math.round(left), right: Math.round(right) };
+    }
+
+    function sendManualDriveTick() {
+      if (currentMode !== 3) return;
+      const speeds = calcMotorSpeeds();
+      sendCommand({ cmd: 6, l: speeds.left, r: speeds.right });
+    }
+
+    function updateKeycapUI() {
+      document.getElementById('keyW').classList.toggle('pressed', keysDown.w);
+      document.getElementById('keyA').classList.toggle('pressed', keysDown.a);
+      document.getElementById('keyS').classList.toggle('pressed', keysDown.s);
+      document.getElementById('keyD').classList.toggle('pressed', keysDown.d);
+      document.getElementById('keyShift').classList.toggle('pressed', keysDown.shift);
+    }
+
+    function startWasdLoop() {
+      if (!wasdInterval) {
+        sendManualDriveTick();
+        wasdInterval = setInterval(sendManualDriveTick, 50); //20hz rc stream
+      }
+    }
+
+    function stopWasdLoop() {
+      if (wasdInterval) {
+        clearInterval(wasdInterval);
+        wasdInterval = null;
+      }
+      if (currentMode === 3) {
+        sendCommand({ cmd: 6, l: 0, r: 0 }, true);
+      }
+    }
+
+    function clearAllKeys() {
+      keysDown.w = false;
+      keysDown.a = false;
+      keysDown.s = false;
+      keysDown.d = false;
+      keysDown.shift = false;
+      updateKeycapUI();
+      stopWasdLoop();
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+
+      if (e.code === "Space") {
+        e.preventDefault();
+        clearAllKeys();
+        triggerStop();
+        return;
+      }
+
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      let keyHit = false;
+      if (e.key === "w" || e.key === "W" || e.key === "ArrowUp")    { keysDown.w = true; keyHit = true; }
+      if (e.key === "s" || e.key === "S" || e.key === "ArrowDown")  { keysDown.s = true; keyHit = true; }
+      if (e.key === "a" || e.key === "A" || e.key === "ArrowLeft")  { keysDown.a = true; keyHit = true; }
+      if (e.key === "d" || e.key === "D" || e.key === "ArrowRight") { keysDown.d = true; keyHit = true; }
+      if (e.key === "Shift")                                        { keysDown.shift = true; keyHit = true; }
+
+      if (keyHit) {
+        e.preventDefault();
+        updateKeycapUI();
+        startWasdLoop();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+
+      let keyHit = false;
+      if (e.key === "w" || e.key === "W" || e.key === "ArrowUp")    { keysDown.w = false; keyHit = true; }
+      if (e.key === "s" || e.key === "S" || e.key === "ArrowDown")  { keysDown.s = false; keyHit = true; }
+      if (e.key === "a" || e.key === "A" || e.key === "ArrowLeft")  { keysDown.a = false; keyHit = true; }
+      if (e.key === "d" || e.key === "D" || e.key === "ArrowRight") { keysDown.d = false; keyHit = true; }
+      if (e.key === "Shift")                                        { keysDown.shift = false; keyHit = true; }
+
+      if (keyHit) {
+        e.preventDefault();
+        updateKeycapUI();
+        if (!keysDown.w && !keysDown.a && !keysDown.s && !keysDown.d) {
+          stopWasdLoop();
+        } else {
+          sendManualDriveTick();
+        }
+      }
+    });
+
+    //mouse and touch handlers for on-screen keycaps
+    const bindKeycapButton = (id, keyName) => {
+      const el = document.getElementById(id);
+      const press = (e) => {
+        e.preventDefault();
+        keysDown[keyName] = true;
+        updateKeycapUI();
+        startWasdLoop();
+      };
+      const release = (e) => {
+        e.preventDefault();
+        keysDown[keyName] = false;
+        updateKeycapUI();
+        if (!keysDown.w && !keysDown.a && !keysDown.s && !keysDown.d) {
+          stopWasdLoop();
+        } else {
+          sendManualDriveTick();
+        }
+      };
+      el.addEventListener('mousedown', press);
+      el.addEventListener('mouseup', release);
+      el.addEventListener('mouseleave', release);
+      el.addEventListener('touchstart', press, { passive: false });
+      el.addEventListener('touchend', release, { passive: false });
+    };
+
+    bindKeycapButton('keyW', 'w');
+    bindKeycapButton('keyA', 'a');
+    bindKeycapButton('keyS', 's');
+    bindKeycapButton('keyD', 'd');
+    bindKeycapButton('keyShift', 'shift');
+    document.getElementById('keySpace').addEventListener('click', () => {
+      clearAllKeys();
+      triggerStop();
+    });
+
+    //deadman safeguards
+    window.addEventListener('blur', clearAllKeys);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) clearAllKeys();
     });
 
     //export config.h modal
@@ -822,6 +1579,7 @@
       const min  = document.getElementById('sliderMin').value;
       const max  = document.getElementById('sliderMax').value;
       const turn = document.getElementById('sliderTurn').value;
+      const thr  = document.getElementById('sliderThr').value;
       const kp   = parseFloat(document.getElementById('sliderKp').value).toFixed(3);
       const kd   = parseFloat(document.getElementById('sliderKd').value).toFixed(3);
       const enc  = parseFloat(document.getElementById('sliderEncKp').value).toFixed(1);
@@ -831,6 +1589,8 @@ constexpr int16_t BASE_SPEED         = ${base};
 constexpr int16_t MIN_SPEED          = ${min};
 constexpr int16_t MAX_SPEED          = ${max};
 constexpr int16_t TURN_SPEED         = ${turn};
+constexpr int16_t THRESH_BLACK_ENTER = ${thr};
+constexpr int16_t THRESH_BLACK_EXIT  = ${Math.max(50, thr - 150)};
 
 constexpr float PID_KP               = ${kp}f;
 constexpr float PID_KD               = ${kd}f;
@@ -839,6 +1599,7 @@ constexpr float ENC_KP               = ${enc}f;
 constexpr bool BENCH_DEBUG_MODE      = ${currentMode === 1 ? 'true' : 'false'};
 constexpr bool MOTOR_TEST_MODE       = ${currentMode === 2 ? 'true' : 'false'};
 constexpr bool ENABLE_INVERTED_ZONE  = ${invActive ? 'true' : 'false'};
+constexpr bool DEFAULT_SKIP_START_EXIT = ${skipActive ? 'true' : 'false'};
 `;
       document.getElementById('exportText').value = code;
       exportModal.style.display = 'flex';
@@ -851,7 +1612,7 @@ constexpr bool ENABLE_INVERTED_ZONE  = ${invActive ? 'true' : 'false'};
       const text = document.getElementById('exportText');
       text.select();
       navigator.clipboard.writeText(text.value);
-      alert("config.h parameters copied to clipboard!");
+      showToast("📋 Copied config.h parameters to clipboard!");
     });
 
     drawChart();

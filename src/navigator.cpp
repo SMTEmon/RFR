@@ -13,8 +13,8 @@ static int32_t checkStartTicks = 0;
 static int32_t prevError = 0;
 static bool invertedActive = false;
 
-void navigatorInit() {
-    currentState = STATE_START_EXIT;
+void navigatorInit(bool skipStartExit) {
+    currentState = skipStartExit ? STATE_NORMAL_PID : STATE_START_EXIT;
     latchedDir = DIR_NONE;
     prevError = 0;
     invertedActive = false;
@@ -23,6 +23,10 @@ void navigatorInit() {
 
 NavState getNavState() {
     return currentState;
+}
+
+bool isNavigatorInverted() {
+    return invertedActive;
 }
 
 const char* getNavStateName() {
@@ -35,32 +39,23 @@ const char* getNavStateName() {
         case STATE_UTURN_180:      return "UTURN_180";
         case STATE_ALL_BLACK_CHECK:return "ALL_BLACK_CHECK";
         case STATE_STOPPED:        return "STOPPED";
+        case STATE_CALIBRATING:    return "CALIBRATING";
         default:                   return "UNKNOWN";
     }
 }
 
 void navigatorUpdate() {
-    //bail out immediately if emergency stopped
-    if (g_emergencyStop) {
-        shortBrake();
-        motorsArm(false);
-        return;
-    }
-
-    //read sensors with current polarity mode
-    sensorsRead(invertedActive);
-
     int32_t currentTicks = getAvgTicks();
     int32_t leftEnc = getLeftTicks();
     int32_t rightEnc = getRightTicks();
+    int16_t maxSpd = (g_cfg.maxSpeed > 0 && g_cfg.maxSpeed <= 255) ? g_cfg.maxSpeed : 255;
 
     switch (currentState) {
         case STATE_START_EXIT: {
             //blind straight exit out of #31 start box
             int16_t diff = static_cast<int16_t>(g_cfg.encKp * (leftEnc - rightEnc));
-            int16_t maxDiff = max((int16_t)(g_cfg.baseSpeed / 2), (int16_t)10);
-            diff = constrain(diff, -maxDiff, maxDiff);
-            drive(g_cfg.baseSpeed - diff, g_cfg.baseSpeed + diff);
+            int16_t spd = constrain(g_cfg.baseSpeed, 0, maxSpd);
+            drive(spd - diff, spd + diff);
 
             //transition once out of solid black box and line is centered
             if (currentTicks >= START_EXIT_TICKS && hasLine() && !isAllBlack()) {
@@ -121,19 +116,15 @@ void navigatorUpdate() {
 
             int16_t correction = static_cast<int16_t>(g_cfg.pidKp * error + g_cfg.pidKd * dError * 0.001f);
 
-            //slow down on sharp curves, burst on straightaways
+            //slow down on sharp curves
             int16_t speed = g_cfg.baseSpeed;
             if (abs(error) > 2000) {
                 speed = g_cfg.minSpeed;
-            } else if (abs(error) < 400 && g_cfg.maxSpeed > g_cfg.baseSpeed) {
-                speed = g_cfg.maxSpeed;
             }
 
-            // Bound correction so steering never exceeds forward speed envelope
-            int16_t maxCorr = max((int16_t)speed, (int16_t)25);
-            correction = constrain(correction, -maxCorr, maxCorr);
-
-            drive(speed + correction, speed - correction);
+            int16_t leftOut  = constrain(speed + correction, -maxSpd, maxSpd);
+            int16_t rightOut = constrain(speed - correction, -maxSpd, maxSpd);
+            drive(leftOut, rightOut);
             break;
         }
 
@@ -152,9 +143,9 @@ void navigatorUpdate() {
             prevError = error;
 
             int16_t correction = static_cast<int16_t>(g_cfg.pidKp * error + g_cfg.pidKd * dError * 0.001f);
-            int16_t maxCorr = max((int16_t)g_cfg.baseSpeed, (int16_t)25);
-            correction = constrain(correction, -maxCorr, maxCorr);
-            drive(g_cfg.baseSpeed + correction, g_cfg.baseSpeed - correction);
+            int16_t leftOut  = constrain(g_cfg.baseSpeed + correction, -maxSpd, maxSpd);
+            int16_t rightOut = constrain(g_cfg.baseSpeed - correction, -maxSpd, maxSpd);
+            drive(leftOut, rightOut);
             break;
         }
 
@@ -177,9 +168,8 @@ void navigatorUpdate() {
         case STATE_GAP_OR_DEADEND: {
             //hold straight heading using encoders
             int16_t diff = static_cast<int16_t>(g_cfg.encKp * (leftEnc - rightEnc));
-            int16_t maxDiff = max((int16_t)(g_cfg.minSpeed / 2), (int16_t)10);
-            diff = constrain(diff, -maxDiff, maxDiff);
-            drive(g_cfg.minSpeed - diff, g_cfg.minSpeed + diff);
+            int16_t spd = constrain(g_cfg.minSpeed, 0, maxSpd);
+            drive(spd - diff, spd + diff);
 
             //line found within gap limit
             if (hasLine()) {
@@ -209,9 +199,8 @@ void navigatorUpdate() {
         case STATE_ALL_BLACK_CHECK: {
             //creep forward to confirm feature type
             int16_t diff = static_cast<int16_t>(g_cfg.encKp * (leftEnc - rightEnc));
-            int16_t maxDiff = max((int16_t)(g_cfg.minSpeed / 2), (int16_t)10);
-            diff = constrain(diff, -maxDiff, maxDiff);
-            drive(g_cfg.minSpeed - diff, g_cfg.minSpeed + diff);
+            int16_t spd = constrain(g_cfg.minSpeed, 0, maxSpd);
+            drive(spd - diff, spd + diff);
 
             int32_t distance = currentTicks - checkStartTicks;
 
@@ -224,8 +213,6 @@ void navigatorUpdate() {
             //check finish box confirmation after driving stop box distance
             if (distance >= STOP_BOX_TICKS) {
                 if (isAllBlack()) {
-                    shortBrake();
-                    motorsArm(false);
                     currentState = STATE_STOPPED;
                 } else if (hasLine()) {
                     currentState = STATE_NORMAL_PID;
@@ -238,10 +225,12 @@ void navigatorUpdate() {
         }
 
         case STATE_STOPPED: {
-            //remain locked in full stop
-            shortBrake();
-            motorsArm(false);
+            //robot reached finish box, hold 0 speed
+            drive(0, 0);
             break;
         }
+
+        default:
+            break;
     }
 }

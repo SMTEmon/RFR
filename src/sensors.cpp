@@ -10,13 +10,19 @@ static int16_t sensorVal[NUM_SENSORS];
 static bool sensorBlack[NUM_SENSORS];
 static int32_t lastError = 0;
 
+static int16_t threshEnter = THRESH_BLACK_ENTER;
+static int16_t threshExit  = THRESH_BLACK_EXIT;
+
+static bool calibrating = false;
+static uint32_t calibStartTime = 0;
+
 //mux helper functions
-static void initMux(const int pins[4], int signalPin) {
+static void initMux(const int pins[4]) {
     for (int i = 0; i < 4; i++) {
         pinMode(pins[i], OUTPUT);
         digitalWrite(pins[i], LOW);
     }
-    pinMode(signalPin, INPUT);
+    //note: do not call pinMode on analog pin in core 3.x (blinds adc)
 }
 
 static void setMuxAddress(const int pins[4], uint8_t channel) {
@@ -41,8 +47,9 @@ static uint16_t readSensorChannel(const int pins[4], int signalPin, uint8_t chan
 
 //core sensor api
 void sensorsInit() {
-    initMux(selectPins, PIN_MUX_SIG);
+    initMux(selectPins);
     analogReadResolution(12);
+    analogSetPinAttenuation(PIN_MUX_SIG, ADC_11db);
 
     //initialize default calibration range to bench defaults
     for (uint8_t i = 0; i < NUM_SENSORS; i++) {
@@ -54,13 +61,68 @@ void sensorsInit() {
     }
 }
 
+void setSensorThreshold(int16_t enterThresh) {
+    threshEnter = constrain(enterThresh, 150, 950);
+    threshExit  = constrain(enterThresh - 150, 50, 850); //150 units schmitt hysteresis
+}
+
+void sensorsStartCalibration() {
+    calibrating = true;
+    calibStartTime = millis();
+    pinMode(PIN_LED, OUTPUT);
+
+    //seed with extremes so sweep discovers true min and max
+    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+        rawMin[i] = 4095;
+        rawMax[i] = 0;
+    }
+}
+
+bool sensorsUpdateCalibration() {
+    if (!calibrating) return false;
+
+    //blink led at 10hz during sweep
+    digitalWrite(PIN_LED, ((millis() / 50) % 2) == 0 ? HIGH : LOW);
+
+    //update min max bounds from recent raw readings
+    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+        uint16_t raw = sensorRaw[i];
+        if (raw < rawMin[i]) rawMin[i] = raw;
+        if (raw > rawMax[i]) rawMax[i] = raw;
+    }
+
+    //check if 5s sweep completed
+    if (millis() - calibStartTime >= CALIB_SWEEP_MS) {
+        calibrating = false;
+        digitalWrite(PIN_LED, LOW);
+
+        //guard against channels that were not swept over black and white
+        for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+            if (rawMax[i] <= rawMin[i] + 600) {
+                rawMin[i] = DEFAULT_RAW_MIN;
+                rawMax[i] = DEFAULT_RAW_MAX;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+void sensorsResetCalibrationDefault() {
+    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+        rawMin[i] = DEFAULT_RAW_MIN;
+        rawMax[i] = DEFAULT_RAW_MAX;
+    }
+}
+
+bool isSensorCalibrating() {
+    return calibrating;
+}
+
 void sensorsCalibrate() {
     //skip sweep during bench wiring tests
     if (SKIP_CALIBRATION) {
-        for (uint8_t i = 0; i < NUM_SENSORS; i++) {
-            rawMin[i] = DEFAULT_RAW_MIN;
-            rawMax[i] = DEFAULT_RAW_MAX;
-        }
+        sensorsResetCalibrationDefault();
         return;
     }
 
@@ -119,9 +181,9 @@ void sensorsRead(bool isInverted) {
         }
 
         //schmitt trigger update
-        if (sensorVal[i] >= THRESH_BLACK_ENTER) {
+        if (sensorVal[i] >= threshEnter) {
             sensorBlack[i] = true;
-        } else if (sensorVal[i] <= THRESH_BLACK_EXIT) {
+        } else if (sensorVal[i] <= threshExit) {
             sensorBlack[i] = false;
         }
     }

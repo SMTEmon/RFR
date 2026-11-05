@@ -10,10 +10,19 @@
 #include <Preferences.h>
 
 RuntimeConfig g_cfg;
-volatile bool g_emergencyStop = false;
+volatile bool g_armed = false; //safe disarmed by default on boot
+volatile int16_t g_manualLeft = 0;
+volatile int16_t g_manualRight = 0;
+volatile uint32_t g_lastManualCmdMs = 0;
+
 static Preferences prefs;
 static uint32_t lastTelemTime = 0;
+static uint32_t lastCfgSyncTime = 0;
 static bool peerAdded = false;
+
+static portMUX_TYPE cmdMux = portMUX_INITIALIZER_UNLOCKED;
+static CommandPacket cmdMailbox = {};
+static volatile bool cmdPending = false;
 
 //default fallback values from config.h
 static void loadDefaultConfig() {
@@ -21,43 +30,40 @@ static void loadDefaultConfig() {
     g_cfg.minSpeed        = MIN_SPEED;
     g_cfg.maxSpeed        = MAX_SPEED;
     g_cfg.turnSpeed       = TURN_SPEED;
+    g_cfg.threshEnter     = THRESH_BLACK_ENTER;
     g_cfg.pidKp           = PID_KP;
     g_cfg.pidKd           = PID_KD;
     g_cfg.encKp           = ENC_KP;
-    g_cfg.benchDebugMode  = BENCH_DEBUG_MODE;
-    g_cfg.motorTestMode   = MOTOR_TEST_MODE;
+    g_cfg.runMode         = BENCH_DEBUG_MODE ? MODE_BENCH_DIAG : (MOTOR_TEST_MODE ? MODE_MOTOR_TEST : MODE_AUTONOMOUS);
     g_cfg.enableInverted  = ENABLE_INVERTED_ZONE;
+    g_cfg.skipStartExit   = DEFAULT_SKIP_START_EXIT;
 }
-
-constexpr uint16_t CFG_VERSION = 2026;
 
 void loadConfigFromNVS() {
     loadDefaultConfig();
 
     if (!prefs.begin("lfr_cfg", true)) { //read-only mode
+        setSensorThreshold(g_cfg.threshEnter);
         return;
     }
 
-    // Only load if saved with current version (ignoring stale old NVS)
-    if (prefs.isKey("saved") && prefs.getUShort("ver", 0) == CFG_VERSION) {
+    if (prefs.isKey("saved")) {
         g_cfg.baseSpeed       = prefs.getShort("base", g_cfg.baseSpeed);
         g_cfg.minSpeed        = prefs.getShort("min",  g_cfg.minSpeed);
         g_cfg.maxSpeed        = prefs.getShort("max",  g_cfg.maxSpeed);
         g_cfg.turnSpeed       = prefs.getShort("turn", g_cfg.turnSpeed);
+        g_cfg.threshEnter     = prefs.getShort("thr",  g_cfg.threshEnter);
         g_cfg.pidKp           = prefs.getFloat("kp",   g_cfg.pidKp);
         g_cfg.pidKd           = prefs.getFloat("kd",   g_cfg.pidKd);
         g_cfg.encKp           = prefs.getFloat("enc",  g_cfg.encKp);
-        g_cfg.benchDebugMode  = prefs.getBool("bench", g_cfg.benchDebugMode);
-        g_cfg.motorTestMode   = prefs.getBool("mtest", g_cfg.motorTestMode);
+        g_cfg.runMode         = prefs.getUChar("mode", g_cfg.runMode);
         g_cfg.enableInverted  = prefs.getBool("inv",   g_cfg.enableInverted);
+        g_cfg.skipStartExit   = prefs.getBool("skip",  g_cfg.skipStartExit);
         Serial.println("//loaded custom tunings from nvs");
-    } else {
-        Serial.println("//using config.h defaults (ignoring stale NVS)");
     }
     prefs.end();
 
-    Serial.printf("//ACTIVE SPEEDS: Base=%d, Min=%d, Max=%d, Turn=%d\n",
-                  g_cfg.baseSpeed, g_cfg.minSpeed, g_cfg.maxSpeed, g_cfg.turnSpeed);
+    setSensorThreshold(g_cfg.threshEnter);
 }
 
 void saveConfigToNVS() {
@@ -69,27 +75,19 @@ void saveConfigToNVS() {
     prefs.putShort("min",  g_cfg.minSpeed);
     prefs.putShort("max",  g_cfg.maxSpeed);
     prefs.putShort("turn", g_cfg.turnSpeed);
+    prefs.putShort("thr",  g_cfg.threshEnter);
     prefs.putFloat("kp",   g_cfg.pidKp);
     prefs.putFloat("kd",   g_cfg.pidKd);
     prefs.putFloat("enc",  g_cfg.encKp);
-    prefs.putBool("bench", g_cfg.benchDebugMode);
-    prefs.putBool("mtest", g_cfg.motorTestMode);
+    prefs.putUChar("mode", g_cfg.runMode);
     prefs.putBool("inv",   g_cfg.enableInverted);
-    prefs.putUShort("ver", CFG_VERSION);
+    prefs.putBool("skip",  g_cfg.skipStartExit);
     prefs.putBool("saved", true);
     prefs.end();
     Serial.println("//saved current tunings to nvs flash");
 }
 
-static uint8_t calcChecksum(const uint8_t *data, size_t len) {
-    uint8_t c = 0;
-    for (size_t i = 0; i < len; i++) {
-        c ^= data[i];
-    }
-    return c;
-}
-
-//esp-now receive callback (handles core v2 & v3 signatures)
+//esp-now receive callback (runs in core 0 wifi isr context)
 #if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
 static void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
 #else
@@ -101,51 +99,90 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
     if (cmd->header != 0x55) return;
 
     //verify checksum
-    uint8_t expected = calcChecksum(data, sizeof(CommandPacket) - 1);
+    uint8_t expected = calcProtocolChecksum(data, sizeof(CommandPacket) - 1);
     if (cmd->checksum != expected) return;
 
-    Serial.printf("//CMD RECV: %d (mode=%d, base=%d, min=%d)\n", cmd->cmdType, cmd->runMode, cmd->baseSpeed, cmd->minSpeed);
+    //store into mailbox atomically
+    portENTER_CRITICAL_ISR(&cmdMux);
+    cmdMailbox = *cmd;
+    cmdPending = true;
+    portEXIT_CRITICAL_ISR(&cmdMux);
+}
 
-    switch (cmd->cmdType) {
-        case 1: //emergency stop
-            g_emergencyStop = true;
-            shortBrake();
-            motorsArm(false);
+//drain and execute mailbox commands on core 1
+void telemetryProcessCommands() {
+    if (!cmdPending) return;
+
+    CommandPacket cmd;
+    portENTER_CRITICAL(&cmdMux);
+    cmd = cmdMailbox;
+    cmdPending = false;
+    portEXIT_CRITICAL(&cmdMux);
+
+    switch (cmd.cmdType) {
+        case CMD_STOP:
+            g_armed = false;
             break;
 
-        case 2: //start / resume
-            g_emergencyStop = false;
-            if (getNavState() == STATE_STOPPED) {
-                navigatorInit();
-            }
-            motorsArm(true);
-            break;
-
-        case 3: //set params live
-            g_cfg.baseSpeed      = cmd->baseSpeed;
-            g_cfg.minSpeed       = cmd->minSpeed;
-            g_cfg.maxSpeed       = cmd->maxSpeed;
-            g_cfg.turnSpeed      = cmd->turnSpeed;
-            g_cfg.pidKp          = cmd->pidKp;
-            g_cfg.pidKd          = cmd->pidKd;
-            g_cfg.encKp          = cmd->encKp;
-            g_cfg.benchDebugMode = (cmd->runMode == 1);
-            g_cfg.motorTestMode  = (cmd->runMode == 2);
-            g_cfg.enableInverted = (cmd->enableInverted != 0);
-            if (g_cfg.benchDebugMode) {
-                drive(0, 0);
-                motorsArm(false);
-            } else if (!g_emergencyStop) {
-                motorsArm(true);
+        case CMD_START:
+            g_armed = true;
+            if (g_cfg.runMode == MODE_AUTONOMOUS) {
+                navigatorInit(g_cfg.skipStartExit);
             }
             break;
 
-        case 4: //commit current params to nvs
+        case CMD_SET_PARAMS: {
+            uint8_t prevMode = g_cfg.runMode;
+            g_cfg.baseSpeed      = cmd.baseSpeed;
+            g_cfg.minSpeed       = cmd.minSpeed;
+            g_cfg.maxSpeed       = cmd.maxSpeed;
+            g_cfg.turnSpeed      = cmd.turnSpeed;
+            g_cfg.threshEnter    = cmd.threshEnter;
+            g_cfg.pidKp          = cmd.pidKp;
+            g_cfg.pidKd          = cmd.pidKd;
+            g_cfg.encKp          = cmd.encKp;
+            g_cfg.runMode        = cmd.runMode;
+            g_cfg.enableInverted = (cmd.enableInverted != 0);
+            g_cfg.skipStartExit  = (cmd.skipStartExit != 0);
+
+            //disarm on mode switch for safety
+            if (prevMode != g_cfg.runMode) {
+                g_armed = false;
+            }
+
+            setSensorThreshold(g_cfg.threshEnter);
+            telemetrySendConfig(ACK_PARAMS_OK);
+            break;
+        }
+
+        case CMD_SAVE_NVS:
             saveConfigToNVS();
+            telemetrySendConfig(ACK_NVS_SAVED);
             break;
 
-        case 5: //reset wheel encoders
+        case CMD_RESET_ENC:
             resetEncoders();
+            telemetrySendConfig(ACK_ENC_RESET);
+            break;
+
+        case CMD_MANUAL_DRIVE:
+            g_manualLeft = cmd.manualLeft;
+            g_manualRight = cmd.manualRight;
+            g_lastManualCmdMs = millis();
+            break;
+
+        case CMD_SYNC_CFG:
+            telemetrySendConfig(ACK_NONE);
+            break;
+
+        case CMD_CALIB_START:
+            g_armed = false;
+            sensorsStartCalibration();
+            break;
+
+        case CMD_CALIB_DEFAULT:
+            sensorsResetCalibrationDefault();
+            telemetrySendConfig(ACK_CALIB_DEFAULT);
             break;
 
         default:
@@ -181,10 +218,13 @@ void telemetryInit() {
 
     if (esp_now_add_peer(&peerInfo) == ESP_OK) {
         peerAdded = true;
-        Serial.println("//esp-now peer added: d0:cf:13:e5:c5:24");
+        Serial.println("//esp-now peer added: 38:3e:51:58:16:70");
     } else {
         Serial.println("//failed to add esp-now peer");
     }
+
+    //broadcast initial config on boot
+    telemetrySendConfig(ACK_NONE);
 }
 
 void telemetrySendNow() {
@@ -201,30 +241,64 @@ void telemetrySendNow() {
         }
     }
     pkt.sensorBlackMask = mask;
-    pkt.positionError   = computePositionError(false);
+    pkt.positionError   = computePositionError(isNavigatorInverted());
     pkt.leftTicks       = getLeftTicks();
     pkt.rightTicks      = getRightTicks();
-    pkt.navState        = static_cast<uint8_t>(getNavState());
+    pkt.leftPwm         = getLastLeftPwm();
+    pkt.rightPwm        = getLastRightPwm();
+    pkt.navState        = static_cast<uint8_t>(isSensorCalibrating() ? STATE_CALIBRATING : getNavState());
+    pkt.runMode         = g_cfg.runMode;
 
     uint8_t flags = 0;
-    if (g_cfg.benchDebugMode)  flags |= 0x01;
-    if (g_cfg.motorTestMode)   flags |= 0x02;
-    if (g_cfg.enableInverted)  flags |= 0x04;
-    if (g_emergencyStop)       flags |= 0x08;
-    if (hasLeftWing())         flags |= 0x10;
-    if (hasRightWing())        flags |= 0x20;
+    if (g_cfg.runMode == MODE_BENCH_DIAG) flags |= 0x01;
+    if (g_cfg.runMode == MODE_MOTOR_TEST) flags |= 0x02;
+    if (isNavigatorInverted())            flags |= 0x04;
+    if (g_armed)                          flags |= 0x08;
+    if (hasLeftWing())                    flags |= 0x10;
+    if (hasRightWing())                   flags |= 0x20;
+    if (isSensorCalibrating())            flags |= 0x40;
     pkt.modeFlags = flags;
 
-    pkt.checksum = calcChecksum(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt) - 1);
+    pkt.checksum = calcProtocolChecksum(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt) - 1);
+
+    esp_now_send(DONGLE_MAC, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+}
+
+void telemetrySendConfig(uint8_t ackEvent) {
+    if (!peerAdded) return;
+
+    ConfigSyncPacket pkt = {};
+    pkt.header         = 0xCC;
+    pkt.baseSpeed      = g_cfg.baseSpeed;
+    pkt.minSpeed       = g_cfg.minSpeed;
+    pkt.maxSpeed       = g_cfg.maxSpeed;
+    pkt.turnSpeed      = g_cfg.turnSpeed;
+    pkt.threshEnter    = g_cfg.threshEnter;
+    pkt.pidKp          = g_cfg.pidKp;
+    pkt.pidKd          = g_cfg.pidKd;
+    pkt.encKp          = g_cfg.encKp;
+    pkt.runMode        = g_cfg.runMode;
+    pkt.enableInverted = g_cfg.enableInverted ? 1 : 0;
+    pkt.skipStartExit  = g_cfg.skipStartExit ? 1 : 0;
+    pkt.ackEvent       = ackEvent;
+
+    pkt.checksum = calcProtocolChecksum(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt) - 1);
 
     esp_now_send(DONGLE_MAC, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
 }
 
 void telemetryUpdate() {
-    //transmit telemetry at 13.5hz (every 80ms)
     uint32_t now = millis();
-    if (now - lastTelemTime >= 80) {
+
+    //transmit telemetry at 25hz (every 40ms)
+    if (now - lastTelemTime >= 40) {
         lastTelemTime = now;
         telemetrySendNow();
+    }
+
+    //heartbeat config sync every 1500ms
+    if (now - lastCfgSyncTime >= 1500) {
+        lastCfgSyncTime = now;
+        telemetrySendConfig(ACK_NONE);
     }
 }

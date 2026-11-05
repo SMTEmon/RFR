@@ -15,3 +15,7 @@ void shortBrake();
 
 //coast stop
 void coastStop();
+
+//get last applied pwm outputs for telemetry
+int16_t getLastLeftPwm();
+int16_t getLastRightPwm();

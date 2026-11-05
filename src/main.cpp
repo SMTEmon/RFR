@@ -9,6 +9,8 @@
 static uint32_t lastLoopMicros = 0;
 static uint32_t lastPrintMillis = 0;
 static uint32_t lastRawPrintMillis = 0;
+static bool wasArmed = false;
+static uint32_t stopBrakeTimer = 0;
 
 static void printSensorMap() {
     Serial.print("Map: [ ");
@@ -42,12 +44,6 @@ static void printRawADC() {
 }
 
 static void runBenchDiagnostics() {
-    //keep motors safely stopped while testing on bench
-    drive(0, 0);
-
-    //sample sensors with normal polarity
-    sensorsRead(false);
-
     int32_t err = computePositionError(false);
     int32_t leftEnc = getLeftTicks();
     int32_t rightEnc = getRightTicks();
@@ -70,36 +66,31 @@ static void runMotorTest() {
     static uint32_t phaseTimer = 0;
     static uint8_t phase = 0;
 
-    //sample sensors so map is always live during motor test
-    sensorsRead(false);
-
     //cycle phases every 2.5 seconds
     if (millis() - phaseTimer >= 2500) {
         phaseTimer = millis();
         phase = (phase + 1) % 4;
     }
 
-    int32_t leftEnc = getLeftTicks();
-    int32_t rightEnc = getRightTicks();
-    int32_t err = computePositionError(false);
-
-    int16_t curTestSpeed = g_cfg.baseSpeed > 0 ? g_cfg.baseSpeed : TEST_MOTOR_SPEED;
-
+    int16_t spd = g_cfg.baseSpeed;
     switch (phase) {
-        case 0: drive(curTestSpeed, 0); break;   //left only
-        case 1: drive(0, curTestSpeed); break;   //right only
-        case 2: drive(curTestSpeed, curTestSpeed); break; //both
+        case 0: drive(spd, 0); break;   //left only
+        case 1: drive(0, spd); break;   //right only
+        case 2: drive(spd, spd); break; //both
         case 3: drive(0, 0); break;     //pause
     }
 
     if (millis() - lastPrintMillis >= 250) {
         lastPrintMillis = millis();
+        int32_t leftEnc = getLeftTicks();
+        int32_t rightEnc = getRightTicks();
+        int32_t err = computePositionError(false);
         printSensorMap();
         printFeatureTags();
         switch (phase) {
-            case 0: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] LEFT MOTOR ON (PWM %d)\n",  (long)err, (long)leftEnc, (long)rightEnc, curTestSpeed); break;
-            case 1: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] RIGHT MOTOR ON (PWM %d)\n", (long)err, (long)leftEnc, (long)rightEnc, curTestSpeed); break;
-            case 2: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] BOTH MOTORS ON (PWM %d)\n",  (long)err, (long)leftEnc, (long)rightEnc, curTestSpeed); break;
+            case 0: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] LEFT MOTOR ON (PWM %d)\n",  (long)err, (long)leftEnc, (long)rightEnc, spd); break;
+            case 1: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] RIGHT MOTOR ON (PWM %d)\n", (long)err, (long)leftEnc, (long)rightEnc, spd); break;
+            case 2: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] BOTH MOTORS ON (PWM %d)\n",  (long)err, (long)leftEnc, (long)rightEnc, spd); break;
             case 3: Serial.printf("| Err: %5ld  L: %5ld  R: %5ld | [TEST] PAUSE (BOTH OFF)\n", (long)err, (long)leftEnc, (long)rightEnc); break;
         }
     }
@@ -123,57 +114,80 @@ void setup() {
     //setup esp-now wireless telemetry and nvs config
     telemetryInit();
 
-    Serial.println("--- LFR Booting ---");
+    Serial.println("--- LFR Booting (Motors Disarmed) ---");
 
-    if (g_cfg.benchDebugMode) {
-        Serial.println("==================================================");
-        Serial.println("BENCH DIAGNOSTIC MODE ACTIVE (Motors Safe)");
-        Serial.println("Slide black tape across sensors to see [ # . ] map");
-        Serial.println("Rotate wheels by hand to check L/R encoder counts");
-        Serial.println("==================================================");
-        sensorsCalibrate();
-    } else if (g_cfg.motorTestMode) {
-        Serial.println("==================================================");
-        Serial.println("OPEN-LOOP MOTOR TEST ACTIVE");
-        Serial.println("Cycle: Left (2.5s) -> Right (2.5s) -> Both (2.5s) -> Stop (2.5s)");
-        Serial.println("==================================================");
-        motorsArm(true);
-    } else {
-        if (SKIP_CALIBRATION) {
-            Serial.println("Bench mode: Hand-sweep calibration skipped!");
-        } else {
-            Serial.println("Sweep sensor bar over black and white for 5s...");
-        }
+    //calibrate min max or load bench defaults
+    sensorsCalibrate();
 
-        //calibrate min max or load bench defaults
-        sensorsCalibrate();
+    //ensure safe disarmed state on boot
+    g_armed = false;
+    motorsArm(false);
+    coastStop();
 
-        if (!SKIP_CALIBRATION) {
-            Serial.println("Calibration complete. Placing inside #31...");
-        }
-
-        //arm motors and launch navigator
-        motorsArm(true);
-        navigatorInit();
-        Serial.println("Starting Round 1 demo run!");
-    }
+    navigatorInit(g_cfg.skipStartExit);
 
     lastLoopMicros = micros();
 }
 
 void loop() {
+    //process incoming esp-now commands on core 1
+    telemetryProcessCommands();
+
     //broadcast telemetry packet to dongle at 25hz
     telemetryUpdate();
 
-    //emergency stop kills motor drive immediately
-    if (g_emergencyStop) {
-        shortBrake();
+    //sample all 16 sensors at 500hz so dashboard adc bars and telemetry never freeze
+    sensorsRead(isNavigatorInverted());
+
+    //handle calibration sweep if triggered
+    if (isSensorCalibrating()) {
         motorsArm(false);
+        coastStop();
+        if (sensorsUpdateCalibration()) {
+            telemetrySendConfig(ACK_CALIB_DONE);
+            Serial.println("//calibration sweep complete");
+        }
         return;
     }
 
-    //bench diagnostic mode branch
-    if (g_cfg.benchDebugMode) {
+    //handle disarmed and active stop braking transition
+    if (!g_armed) {
+        if (wasArmed) {
+            //robot was just running, apply 150ms active electromagnetic short brake
+            wasArmed = false;
+            stopBrakeTimer = millis();
+            motorsArm(true);
+            shortBrake();
+        } else if (stopBrakeTimer > 0 && millis() - stopBrakeTimer < STOP_BRAKE_MS) {
+            //holding active brake
+            motorsArm(true);
+            shortBrake();
+        } else {
+            //transition to passive coast and disable h-bridge
+            stopBrakeTimer = 0;
+            coastStop();
+            motorsArm(false);
+        }
+
+        //keep lastLoopMicros updated so it never accumulates catch-up bursts when re-armed
+        lastLoopMicros = micros();
+
+        if (g_cfg.runMode == MODE_BENCH_DIAG) {
+            if (millis() - lastPrintMillis >= 150) {
+                lastPrintMillis = millis();
+                runBenchDiagnostics();
+            }
+        }
+        return;
+    }
+
+    //robot is armed!
+    wasArmed = true;
+
+    //bench diagnostic mode branch (motors held at 0)
+    if (g_cfg.runMode == MODE_BENCH_DIAG) {
+        motorsArm(false);
+        coastStop();
         if (millis() - lastPrintMillis >= 150) {
             lastPrintMillis = millis();
             runBenchDiagnostics();
@@ -182,19 +196,52 @@ void loop() {
     }
 
     //open-loop motor test branch
-    if (g_cfg.motorTestMode) {
+    if (g_cfg.runMode == MODE_MOTOR_TEST) {
+        motorsArm(true);
         runMotorTest();
         return;
     }
 
+    //manual wasd rc mode branch
+    if (g_cfg.runMode == MODE_MANUAL_WASD) {
+        //deadman watchdog: if no manual packet received for 250ms, stop motors
+        if (millis() - g_lastManualCmdMs > MANUAL_DEADMAN_MS) {
+            coastStop();
+        } else {
+            motorsArm(true);
+            drive(g_manualLeft, g_manualRight);
+        }
+
+        if (millis() - lastPrintMillis >= 100) {
+            lastPrintMillis = millis();
+            printSensorMap();
+            Serial.printf("| [WASD] L_PWM: %4d  R_PWM: %4d  L_enc: %5ld  R_enc: %5ld\n",
+                          getLastLeftPwm(), getLastRightPwm(),
+                          (long)getLeftTicks(), (long)getRightTicks());
+        }
+        return;
+    }
+
+    //autonomous track mode branch
+    motorsArm(true);
     uint32_t currentMicros = micros();
 
     //deterministic 500hz control loop
     if (currentMicros - lastLoopMicros >= LOOP_INTERVAL_US) {
-        lastLoopMicros += LOOP_INTERVAL_US;
+        //guard against catch-up burst if stalled
+        if (currentMicros - lastLoopMicros > 50000) {
+            lastLoopMicros = currentMicros;
+        } else {
+            lastLoopMicros += LOOP_INTERVAL_US;
+        }
 
         //advance state machine and motor outputs
         navigatorUpdate();
+
+        //auto-disarm when finish box reached
+        if (getNavState() == STATE_STOPPED) {
+            g_armed = false;
+        }
     }
 
     //debug telemetry every 100ms

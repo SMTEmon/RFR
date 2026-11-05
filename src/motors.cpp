@@ -1,5 +1,9 @@
 #include "motors.h"
 #include "config.h"
+#include "telemetry.h"
+
+static int16_t lastLeft = 0;
+static int16_t lastRight = 0;
 
 void motorsInit() {
     //force stby low first to prevent boot twitch
@@ -19,6 +23,9 @@ void motorsInit() {
     //ensure outputs are off
     ledcWrite(PIN_PWMA, 0);
     ledcWrite(PIN_PWMB, 0);
+
+    lastLeft = 0;
+    lastRight = 0;
 }
 
 void motorsArm(bool enable) {
@@ -27,13 +34,17 @@ void motorsArm(bool enable) {
 }
 
 void drive(int16_t leftSpeed, int16_t rightSpeed) {
+    //clamp values to maxSpeed or 255 bounds
+    int16_t limit = (g_cfg.maxSpeed > 0 && g_cfg.maxSpeed <= 255) ? g_cfg.maxSpeed : 255;
+    leftSpeed = constrain(leftSpeed, -limit, limit);
+    rightSpeed = constrain(rightSpeed, -limit, limit);
+
+    lastLeft = leftSpeed;
+    lastRight = rightSpeed;
+
     //apply polarity flags
     if (INVERT_LEFT_MOTOR)  leftSpeed  = -leftSpeed;
     if (INVERT_RIGHT_MOTOR) rightSpeed = -rightSpeed;
-
-    //clamp values to 8bit pwm bounds
-    leftSpeed = constrain(leftSpeed, -255, 255);
-    rightSpeed = constrain(rightSpeed, -255, 255);
 
     //left motor control
     if (leftSpeed > 0) {
@@ -76,6 +87,8 @@ void shortBrake() {
     digitalWrite(PIN_BIN2, HIGH);
     ledcWrite(PIN_PWMA, 255);
     ledcWrite(PIN_PWMB, 255);
+    lastLeft = 0;
+    lastRight = 0;
 }
 
 void coastStop() {
@@ -86,4 +99,14 @@ void coastStop() {
     digitalWrite(PIN_BIN2, LOW);
     ledcWrite(PIN_PWMA, 0);
     ledcWrite(PIN_PWMB, 0);
+    lastLeft = 0;
+    lastRight = 0;
+}
+
+int16_t getLastLeftPwm() {
+    return lastLeft;
+}
+
+int16_t getLastRightPwm() {
+    return lastRight;
 }

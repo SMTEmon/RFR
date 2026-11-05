@@ -5,8 +5,17 @@
 //init mux pins and adc
 void sensorsInit();
 
-//calibrate min max during boot sweep
+//calibrate min max during boot sweep (blocking legacy or fallback)
 void sensorsCalibrate();
+
+//runtime dynamic calibration
+void sensorsStartCalibration();
+bool sensorsUpdateCalibration(); //returns true when 5s sweep finishes
+void sensorsResetCalibrationDefault();
+bool isSensorCalibrating();
+
+//runtime schmitt threshold adjustment
+void setSensorThreshold(int16_t enterThresh);
 
 //read all 16 channels through mux
 void sensorsRead(bool isInverted);
