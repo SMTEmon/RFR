@@ -80,6 +80,21 @@
     .btn-estop { background: var(--rose); color: #fff; font-weight: 800; }
     .btn-estop:hover { filter: brightness(1.15); }
 
+    .btn-micro {
+      padding: 3px 8px;
+      font-size: 9.5px;
+      font-weight: 700;
+      border-radius: 4px;
+      background: #141c2b;
+      color: #94a3b8;
+      border: 1px solid #1e293b;
+      cursor: pointer;
+      transition: all 0.12s ease;
+      user-select: none;
+    }
+    .btn-micro:hover { background: #1e293b; color: #fff; border-color: #334155; }
+    .btn-micro:active { transform: translateY(1px); }
+
     .dashboard-grid {
       display: grid;
       grid-template-columns: 1.15fr 1fr;
@@ -106,6 +121,8 @@
       justify-content: space-between;
       border-bottom: 1px solid #1e293b;
       padding-bottom: 8px;
+      flex-wrap: wrap;
+      gap: 6px;
     }
 
     /* U-Arch SVG Container */
@@ -153,7 +170,7 @@
       display: grid;
       grid-template-columns: repeat(16, 1fr);
       gap: 4px;
-      height: 120px;
+      height: 125px;
       background: #090d16;
       border: 1px solid #1a2333;
       border-radius: 8px;
@@ -167,6 +184,15 @@
       height: 100%;
       justify-content: flex-end;
       gap: 3px;
+      transition: opacity 0.2s ease;
+    }
+    .bar-col.muted-channel {
+      opacity: 0.35;
+      filter: grayscale(0.8);
+    }
+    .bar-col.muted-channel .bar-value {
+      color: #f43f5e;
+      font-weight: 800;
     }
     .bar-value { font-size: 8px; color: #94a3b8; font-family: monospace; height: 12px; }
     .bar-track {
@@ -186,11 +212,80 @@
       background: #334155;
       border-radius: 2px;
       transition: height 0.08s ease, background 0.1s ease;
+      z-index: 1;
     }
     .bar-fill.active { background: #06b6d4; box-shadow: 0 0 6px rgba(6, 182, 212, 0.8); }
     .bar-col.wing .bar-fill.active { background: #c084fc; box-shadow: 0 0 6px rgba(192, 132, 252, 0.8); }
     .bar-col.bevel .bar-fill.active { background: #38bdf8; box-shadow: 0 0 6px rgba(56, 189, 248, 0.8); }
+    
+    .bar-thresh-line {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: #f59e0b;
+      box-shadow: 0 0 4px rgba(245, 158, 11, 0.9);
+      pointer-events: none;
+      transition: bottom 0.1s ease;
+      z-index: 2;
+    }
     .bar-label { font-size: 8.5px; color: #64748b; font-weight: 700; }
+
+    /* 16-Channel Sensitivity Equalizer */
+    .sens-toolbar {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+    }
+    .sens-grid {
+      display: grid;
+      grid-template-columns: repeat(16, 1fr);
+      gap: 4px;
+      background: #090d16;
+      border: 1px solid #1a2333;
+      border-radius: 8px;
+      padding: 8px 6px;
+    }
+    .sens-strip {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+      background: #0d131f;
+      border: 1px solid #1e293b;
+      border-radius: 6px;
+      padding: 6px 2px;
+    }
+    .sens-badge {
+      font-size: 8.5px;
+      font-weight: 800;
+      padding: 2px 4px;
+      border-radius: 3px;
+      cursor: pointer;
+      user-select: none;
+      transition: all 0.12s ease;
+      letter-spacing: 0.3px;
+    }
+    .sens-badge.wing { background: rgba(192, 132, 252, 0.2); color: #c084fc; border: 1px solid #a855f7; }
+    .sens-badge.bevel { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid #0284c7; }
+    .sens-badge.core { background: rgba(6, 182, 212, 0.2); color: #06b6d4; border: 1px solid #0891b2; }
+    .sens-badge.muted { background: rgba(244, 63, 94, 0.25); color: #fb7185; border: 1px solid #f43f5e; text-decoration: line-through; }
+    .sens-readout {
+      font-size: 8px;
+      font-family: monospace;
+      font-weight: 800;
+      color: #94a3b8;
+      height: 12px;
+    }
+    .sens-readout.muted { color: #f43f5e; }
+    .sens-slider-v {
+      -webkit-appearance: slider-vertical;
+      writing-mode: bt-lr;
+      width: 14px;
+      height: 75px;
+      background: transparent;
+      cursor: pointer;
+    }
 
     /* Stats Grid */
     .stats-row {
@@ -554,7 +649,7 @@
     }
     textarea {
       width: 100%;
-      height: 220px;
+      height: 240px;
       background: #090d16;
       border: 1px solid #1e293b;
       border-radius: 6px;
@@ -748,6 +843,31 @@
 
   </div>
 
+  <!-- 16-Channel Sensor Sensitivity Equalizer -->
+  <div class="card">
+    <div class="card-title">
+      <span>🎚️ 16-Channel Sensor Sensitivity Equalizer</span>
+      <div class="sens-toolbar">
+        <button class="btn-micro" id="btnSensAll100">ALL 100%</button>
+        <button class="btn-micro" id="btnSensWingsUp">WINGS +10%</button>
+        <button class="btn-micro" id="btnSensWingsDown">WINGS -10%</button>
+        <button class="btn-micro" id="btnSensBevelsUp">BEVELS +10%</button>
+        <button class="btn-micro" id="btnSensBevelsDown">BEVELS -10%</button>
+        <button class="btn-micro" id="btnSensFrontUp">FRONT +10%</button>
+        <button class="btn-micro" id="btnSensFrontDown">FRONT -10%</button>
+      </div>
+    </div>
+
+    <div class="sens-grid" id="sensGrid">
+      <!-- 16 columns generated dynamically by JS -->
+    </div>
+
+    <div style="font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;">
+      <span>Click badge (e.g. <strong>S00</strong>) to toggle <strong>MUTE</strong>. &gt;100% = higher sensitivity. Amber bar line shows active Schmitt trigger level.</span>
+      <span style="font-family: monospace; color: #f59e0b;">Synced to NVS flash on robot</span>
+    </div>
+  </div>
+
   <!-- Modes & WASD Panel -->
   <div class="card">
     <div class="card-title">
@@ -844,11 +964,11 @@
         <div class="tuning-cluster-title">🔍 SENSING & LINE DETECTION</div>
         <div class="speeds-grid">
           <div class="control-item">
-            <div class="control-header"><span>BLACK LINE THRESHOLD</span><span class="control-val" id="valThr">500</span></div>
+            <div class="control-header"><span>BLACK LINE THRESHOLD (MASTER)</span><span class="control-val" id="valThr">500</span></div>
             <input type="range" id="sliderThr" min="150" max="800" step="10" value="500">
           </div>
           <div style="font-size: 11px; color: var(--text-muted); padding: 8px 10px; background: #090d16; border: 1px solid #1e293b; border-radius: 6px; line-height: 1.5;">
-            Normalizes 0 (white) to 1000 (black). Schmitt trigger activates at threshold and releases at threshold - 150. Lower values detect faint lines; higher values reject glare.
+            Master trigger threshold (0..1000). Moving this shifts all 16 sensor thresholds together while preserving your custom per-sensor sensitivity offsets.
           </div>
         </div>
       </div>
@@ -900,7 +1020,7 @@
 
   <!-- JavaScript Logic -->
   <script>
-    //generate contiguous 16-column ADC bar array with zone tags
+    //generate contiguous 16-column ADC bar array with zone tags and dynamic threshold lines
     const barsGrid = document.getElementById('barsGrid');
     for (let i = 0; i < 16; i++) {
       const col = document.createElement('div');
@@ -909,13 +1029,130 @@
       else if (i === 2 || i === 3 || i === 12 || i === 13) zoneClass = "bevel";
 
       col.className = `bar-col ${zoneClass}`;
+      col.id = `barCol${i}`;
       col.innerHTML = `
         <div class="bar-value" id="adcVal${i}">0</div>
-        <div class="bar-track"><div class="bar-fill" id="adcBar${i}" style="height: 0%;"></div></div>
+        <div class="bar-track">
+          <div class="bar-fill" id="adcBar${i}" style="height: 0%;"></div>
+          <div class="bar-thresh-line" id="threshLine${i}" style="bottom: 50%;"></div>
+        </div>
         <div class="bar-label">S${i.toString().padStart(2, '0')}</div>
       `;
       barsGrid.appendChild(col);
     }
+
+    //generate 16-channel sensitivity equalizer strips
+    const sensGrid = document.getElementById('sensGrid');
+    const sensorSens = new Array(16).fill(100);
+
+    for (let i = 0; i < 16; i++) {
+      const strip = document.createElement('div');
+      strip.className = 'sens-strip';
+
+      let zoneClass = "core";
+      let zoneLabel = "CORE";
+      if (i === 0 || i === 1 || i === 14 || i === 15) { zoneClass = "wing"; zoneLabel = "WING"; }
+      else if (i === 2 || i === 3 || i === 12 || i === 13) { zoneClass = "bevel"; zoneLabel = "BEV"; }
+
+      strip.innerHTML = `
+        <div class="sens-badge ${zoneClass}" id="sensBadge${i}" title="Click to toggle MUTE">S${i.toString().padStart(2, '0')}</div>
+        <div class="sens-readout" id="sensVal${i}">100%</div>
+        <input type="range" class="sens-slider-v" id="sliderSens${i}" min="0" max="180" step="5" value="100" orient="vertical">
+      `;
+      sensGrid.appendChild(strip);
+    }
+
+    function updateBarThresholdMarkers() {
+      const globalThr = parseInt(document.getElementById('sliderThr').value);
+      for (let i = 0; i < 16; i++) {
+        const sens = sensorSens[i];
+        const line = document.getElementById(`threshLine${i}`);
+        const barCol = document.getElementById(`barCol${i}`);
+        const badge = document.getElementById(`sensBadge${i}`);
+        const valText = document.getElementById(`sensVal${i}`);
+        const slider = document.getElementById(`sliderSens${i}`);
+
+        if (slider && slider.value != sens) slider.value = sens;
+
+        if (sens === 0) {
+          if (line) line.style.display = 'none';
+          if (barCol) barCol.classList.add('muted-channel');
+          if (badge) badge.classList.add('muted');
+          if (valText) {
+            valText.textContent = "OFF";
+            valText.classList.add('muted');
+          }
+        } else {
+          if (line) {
+            line.style.display = 'block';
+            //enterI = constrain(threshEnter - (sens - 100) * 5, 80, 940)
+            const enterI = Math.max(80, Math.min(940, globalThr - (sens - 100) * 5));
+            //norm = (clamped - rmin) * 1000 / (rmax - rmin) => raw = 200 + enterI * 3.8
+            const rawThresh = 200 + enterI * 3.8;
+            const pct = Math.max(0, Math.min(100, (rawThresh / 4095) * 100));
+            line.style.bottom = `${pct}%`;
+          }
+          if (barCol) barCol.classList.remove('muted-channel');
+          if (badge) badge.classList.remove('muted');
+          if (valText) {
+            valText.textContent = `${sens}%`;
+            valText.classList.remove('muted');
+          }
+        }
+      }
+    }
+
+    //bind 16 sensitivity sliders
+    for (let i = 0; i < 16; i++) {
+      const slider = document.getElementById(`sliderSens${i}`);
+      const badge = document.getElementById(`sensBadge${i}`);
+
+      slider.addEventListener('input', () => {
+        sensorSens[i] = parseInt(slider.value);
+        updateBarThresholdMarkers();
+        lastLocalEditTime = performance.now();
+        clearTimeout(sliderDebounceTimer);
+        sliderDebounceTimer = setTimeout(sendLiveTunings, 100);
+      });
+
+      slider.addEventListener('change', () => {
+        sendLiveTunings();
+      });
+
+      //click badge to toggle mute (0% vs 100%)
+      badge.addEventListener('click', () => {
+        if (sensorSens[i] === 0) {
+          sensorSens[i] = 100;
+        } else {
+          sensorSens[i] = 0;
+        }
+        slider.value = sensorSens[i];
+        updateBarThresholdMarkers();
+        sendLiveTunings();
+      });
+    }
+
+    //quick sensitivity toolbar handlers
+    document.getElementById('btnSensAll100').addEventListener('click', () => {
+      for (let i = 0; i < 16; i++) sensorSens[i] = 100;
+      updateBarThresholdMarkers();
+      sendLiveTunings();
+    });
+
+    const adjustGroupSens = (indices, delta) => {
+      indices.forEach(i => {
+        sensorSens[i] = Math.max(20, Math.min(180, sensorSens[i] + delta));
+      });
+      updateBarThresholdMarkers();
+      sendLiveTunings();
+    };
+
+    document.getElementById('btnSensWingsUp').addEventListener('click', () => adjustGroupSens([0, 1, 14, 15], 10));
+    document.getElementById('btnSensWingsDown').addEventListener('click', () => adjustGroupSens([0, 1, 14, 15], -10));
+    document.getElementById('btnSensBevelsUp').addEventListener('click', () => adjustGroupSens([2, 3, 12, 13], 10));
+    document.getElementById('btnSensBevelsDown').addEventListener('click', () => adjustGroupSens([2, 3, 12, 13], -10));
+    document.getElementById('btnSensFrontUp').addEventListener('click', () => adjustGroupSens([4, 5, 6, 7, 8, 9, 10, 11], 10));
+    document.getElementById('btnSensFrontDown').addEventListener('click', () => adjustGroupSens([4, 5, 6, 7, 8, 9, 10, 11], -10));
 
     //webserial communication & serialized write queue
     let port = null;
@@ -1258,6 +1495,13 @@
         document.getElementById('valEncKp').textContent = cfg.enc.toFixed(1);
       }
 
+      if (cfg.sens && Array.isArray(cfg.sens) && cfg.sens.length === 16) {
+        for (let i = 0; i < 16; i++) {
+          sensorSens[i] = cfg.sens[i];
+        }
+      }
+      updateBarThresholdMarkers();
+
       if (cfg.mode !== undefined) {
         currentMode = cfg.mode;
         document.querySelectorAll('.mode-pill[data-mode]').forEach(p => {
@@ -1336,6 +1580,7 @@
         val.textContent = isFloat ? parseFloat(slider.value).toFixed(decimals) : slider.value;
         if (id === 'sliderThr') {
           document.getElementById('threshLabel').textContent = `ENTER THRESH: ${slider.value}`;
+          updateBarThresholdMarkers();
         }
         lastLocalEditTime = performance.now();
 
@@ -1371,7 +1616,8 @@
         enc:  parseFloat(document.getElementById('sliderEncKp').value),
         mode: currentMode,
         inv:  invActive ? 1 : 0,
-        skip: skipActive ? 1 : 0
+        skip: skipActive ? 1 : 0,
+        sens: sensorSens
       });
     }
 
@@ -1600,6 +1846,11 @@ constexpr bool BENCH_DEBUG_MODE      = ${currentMode === 1 ? 'true' : 'false'};
 constexpr bool MOTOR_TEST_MODE       = ${currentMode === 2 ? 'true' : 'false'};
 constexpr bool ENABLE_INVERTED_ZONE  = ${invActive ? 'true' : 'false'};
 constexpr bool DEFAULT_SKIP_START_EXIT = ${skipActive ? 'true' : 'false'};
+
+//per-sensor sensitivity percentage (100 = neutral, 0 = muted)
+constexpr uint8_t DEFAULT_SENSOR_SENS[NUM_SENSORS] = {
+    ${sensorSens.join(', ')}
+};
 `;
       document.getElementById('exportText').value = code;
       exportModal.style.display = 'flex';
@@ -1615,6 +1866,7 @@ constexpr bool DEFAULT_SKIP_START_EXIT = ${skipActive ? 'true' : 'false'};
       showToast("📋 Copied config.h parameters to clipboard!");
     });
 
+    updateBarThresholdMarkers();
     drawChart();
   </script>
 </body>

@@ -9,6 +9,7 @@ static const uint8_t DEFAULT_LFR_MAC[6] = {0xB4, 0xBF, 0xE9, 0x0F, 0x13, 0xC0};
 static uint8_t lfrMac[6] = {0xB4, 0xBF, 0xE9, 0x0F, 0x13, 0xC0};
 static bool lfrKnown = true;
 static String serialRxBuf = "";
+static uint8_t lastSens[16] = {100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100};
 
 //state name lookup
 static const char* getStateName(uint8_t st) {
@@ -83,7 +84,9 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
         uint8_t expected = calcProtocolChecksum(data, sizeof(ConfigSyncPacket) - 1);
         if (cfg->checksum != expected) return;
 
-        Serial.printf("{\"t\":\"cfg\",\"base\":%d,\"min\":%d,\"max\":%d,\"turn\":%d,\"thr\":%d,\"kp\":%.3f,\"kd\":%.3f,\"enc\":%.1f,\"mode\":%u,\"inv\":%u,\"skip\":%u,\"ack\":%u}\n",
+        memcpy(lastSens, cfg->sensorSens, 16);
+
+        Serial.printf("{\"t\":\"cfg\",\"base\":%d,\"min\":%d,\"max\":%d,\"turn\":%d,\"thr\":%d,\"kp\":%.3f,\"kd\":%.3f,\"enc\":%.1f,\"mode\":%u,\"inv\":%u,\"skip\":%u,\"ack\":%u,\"sens\":[",
                       cfg->baseSpeed,
                       cfg->minSpeed,
                       cfg->maxSpeed,
@@ -96,6 +99,11 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
                       cfg->enableInverted,
                       cfg->skipStartExit,
                       cfg->ackEvent);
+        for (uint8_t i = 0; i < 16; i++) {
+            Serial.print(cfg->sensorSens[i]);
+            if (i < 15) Serial.print(",");
+        }
+        Serial.println("]}");
         return;
     }
 }
@@ -141,6 +149,7 @@ static void handleSerialCommand(const String &line) {
     pkt.runMode        = 0;
     pkt.enableInverted = 0;
     pkt.skipStartExit  = 1;
+    memcpy(pkt.sensorSens, lastSens, 16);
     pkt.manualLeft     = 0;
     pkt.manualRight    = 0;
 
@@ -168,6 +177,22 @@ static void handleSerialCommand(const String &line) {
         pkt.runMode        = extractInt("\"mode\":", 0);
         pkt.enableInverted = extractInt("\"inv\":",  0);
         pkt.skipStartExit  = extractInt("\"skip\":", 1);
+
+        int sensIdx = line.indexOf("\"sens\":[");
+        if (sensIdx != -1) {
+            int start = sensIdx + 8;
+            for (uint8_t i = 0; i < 16; i++) {
+                int nextComma = line.indexOf(',', start);
+                int nextClose = line.indexOf(']', start);
+                int end = (nextComma != -1 && (nextClose == -1 || nextComma < nextClose)) ? nextComma : nextClose;
+                if (end != -1) {
+                    uint8_t val = line.substring(start, end).toInt();
+                    pkt.sensorSens[i] = val;
+                    lastSens[i] = val;
+                    start = end + 1;
+                }
+            }
+        }
     } else if (cmdType == CMD_MANUAL_DRIVE) {
         pkt.manualLeft     = extractInt("\"l\":", 0);
         pkt.manualRight    = extractInt("\"r\":", 0);
@@ -214,7 +239,7 @@ void loop() {
                 serialRxBuf = "";
             }
         } else {
-            if (serialRxBuf.length() < 512) {
+            if (serialRxBuf.length() < 1024) {
                 serialRxBuf += c;
             }
         }

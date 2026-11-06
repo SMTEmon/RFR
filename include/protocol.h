@@ -86,10 +86,11 @@ struct ConfigSyncPacket {
     uint8_t runMode;         //1 byte RunMode enum
     uint8_t enableInverted;  //1 byte (0/1)
     uint8_t skipStartExit;   //1 byte (0/1)
+    uint8_t sensorSens[16];  //16 bytes: 0=off, 20..180% sensitivity
     uint8_t ackEvent;        //1 byte AckEvent enum
     uint8_t checksum;        //1 byte xor
 };
-static_assert(sizeof(ConfigSyncPacket) == 28, "ConfigSyncPacket size mismatch");
+static_assert(sizeof(ConfigSyncPacket) == 44, "ConfigSyncPacket size mismatch");
 
 //command packet sent from dongle to lfr
 struct CommandPacket {
@@ -106,11 +107,12 @@ struct CommandPacket {
     uint8_t runMode;         //1 byte RunMode enum
     uint8_t enableInverted;  //1 byte (0/1)
     uint8_t skipStartExit;   //1 byte (0/1)
+    uint8_t sensorSens[16];  //16 bytes: 0=off, 20..180% sensitivity
     int16_t manualLeft;      //2 bytes (-255..255)
     int16_t manualRight;     //2 bytes (-255..255)
     uint8_t checksum;        //1 byte xor
 };
-static_assert(sizeof(CommandPacket) == 32, "CommandPacket size mismatch");
+static_assert(sizeof(CommandPacket) == 48, "CommandPacket size mismatch");
 
 #pragma pack(pop)
 

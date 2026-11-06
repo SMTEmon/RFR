@@ -8,6 +8,7 @@ static uint16_t rawMax[NUM_SENSORS];
 static uint16_t sensorRaw[NUM_SENSORS];
 static int16_t sensorVal[NUM_SENSORS];
 static bool sensorBlack[NUM_SENSORS];
+static uint8_t sensorSens[NUM_SENSORS];
 static int32_t lastError = 0;
 
 static int16_t threshEnter = THRESH_BLACK_ENTER;
@@ -58,12 +59,30 @@ void sensorsInit() {
         sensorRaw[i] = 0;
         sensorVal[i] = 0;
         sensorBlack[i] = false;
+        sensorSens[i] = DEFAULT_SENSOR_SENS[i];
     }
 }
 
 void setSensorThreshold(int16_t enterThresh) {
     threshEnter = constrain(enterThresh, 150, 950);
     threshExit  = constrain(enterThresh - 150, 50, 850); //150 units schmitt hysteresis
+}
+
+void setSensorSensitivity(uint8_t idx, uint8_t sensPct) {
+    if (idx < NUM_SENSORS) {
+        sensorSens[idx] = constrain(sensPct, 0, 180);
+    }
+}
+
+void setAllSensorSensitivities(const uint8_t sens[NUM_SENSORS]) {
+    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+        sensorSens[i] = constrain(sens[i], 0, 180);
+    }
+}
+
+uint8_t getSensorSensitivity(uint8_t idx) {
+    if (idx >= NUM_SENSORS) return 100;
+    return sensorSens[idx];
 }
 
 void sensorsStartCalibration() {
@@ -156,6 +175,13 @@ void sensorsRead(bool isInverted) {
         uint16_t raw = readSensorChannel(selectPins, PIN_MUX_SIG, ch);
         sensorRaw[i] = raw;
 
+        //handle muted channel
+        if (sensorSens[i] == 0) {
+            sensorVal[i] = 0;
+            sensorBlack[i] = false;
+            continue;
+        }
+
         //guard against zero span
         uint16_t rmin = rawMin[i];
         uint16_t rmax = rawMax[i];
@@ -173,18 +199,38 @@ void sensorsRead(bool isInverted) {
             norm = (rmax - clamped) * 1000 / (rmax - rmin);
         }
 
-        //invert polarity if currently inside inverted zone
-        if (isInverted) {
-            sensorVal[i] = 1000 - norm;
+        //compute per-channel effective threshold (each 1% shifts threshold by 5 units)
+        //100% = neutral (enterI == threshEnter)
+        //>100% = lower threshold (more sensitive to black)
+        //<100% = higher threshold (rejects glare/floor)
+        int16_t enterI = constrain(threshEnter - (static_cast<int16_t>(sensorSens[i]) - 100) * 5, 80, 940);
+        int16_t hystI  = min<int16_t>(120, enterI / 2);
+        int16_t exitI  = max<int16_t>(40, enterI - hystI);
+
+        //equalize analog curve around enterI -> 500 for balanced pid centroid
+        int16_t eqDark;
+        if (norm <= enterI) {
+            eqDark = static_cast<int32_t>(norm) * 500 / enterI;
         } else {
-            sensorVal[i] = norm;
+            eqDark = 500 + static_cast<int32_t>(norm - enterI) * 500 / (1000 - enterI);
         }
 
-        //schmitt trigger update
-        if (sensorVal[i] >= threshEnter) {
-            sensorBlack[i] = true;
-        } else if (sensorVal[i] <= threshExit) {
-            sensorBlack[i] = false;
+        sensorVal[i] = isInverted ? (1000 - eqDark) : eqDark;
+
+        //per-channel schmitt trigger update
+        if (!isInverted) {
+            if (norm >= enterI) {
+                sensorBlack[i] = true;
+            } else if (norm <= exitI) {
+                sensorBlack[i] = false;
+            }
+        } else {
+            //in inverted zone, black is the floor and white is the line
+            if (norm <= exitI) {
+                sensorBlack[i] = true;
+            } else if (norm >= enterI) {
+                sensorBlack[i] = false;
+            }
         }
     }
 }

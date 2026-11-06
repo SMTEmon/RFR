@@ -14,8 +14,11 @@ bool sensorsUpdateCalibration(); //returns true when 5s sweep finishes
 void sensorsResetCalibrationDefault();
 bool isSensorCalibrating();
 
-//runtime schmitt threshold adjustment
+//runtime schmitt threshold & per-sensor sensitivity adjustment
 void setSensorThreshold(int16_t enterThresh);
+void setSensorSensitivity(uint8_t idx, uint8_t sensPct);
+void setAllSensorSensitivities(const uint8_t sens[NUM_SENSORS]);
+uint8_t getSensorSensitivity(uint8_t idx);
 
 //read all 16 channels through mux
 void sensorsRead(bool isInverted);

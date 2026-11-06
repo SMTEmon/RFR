@@ -37,6 +37,9 @@ static void loadDefaultConfig() {
     g_cfg.runMode         = BENCH_DEBUG_MODE ? MODE_BENCH_DIAG : (MOTOR_TEST_MODE ? MODE_MOTOR_TEST : MODE_AUTONOMOUS);
     g_cfg.enableInverted  = ENABLE_INVERTED_ZONE;
     g_cfg.skipStartExit   = DEFAULT_SKIP_START_EXIT;
+    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+        g_cfg.sensorSens[i] = DEFAULT_SENSOR_SENS[i];
+    }
 }
 
 void loadConfigFromNVS() {
@@ -44,6 +47,7 @@ void loadConfigFromNVS() {
 
     if (!prefs.begin("lfr_cfg", true)) { //read-only mode
         setSensorThreshold(g_cfg.threshEnter);
+        setAllSensorSensitivities(g_cfg.sensorSens);
         return;
     }
 
@@ -59,11 +63,15 @@ void loadConfigFromNVS() {
         g_cfg.runMode         = prefs.getUChar("mode", g_cfg.runMode);
         g_cfg.enableInverted  = prefs.getBool("inv",   g_cfg.enableInverted);
         g_cfg.skipStartExit   = prefs.getBool("skip",  g_cfg.skipStartExit);
+        if (prefs.isKey("sens")) {
+            prefs.getBytes("sens", g_cfg.sensorSens, sizeof(g_cfg.sensorSens));
+        }
         Serial.println("//loaded custom tunings from nvs");
     }
     prefs.end();
 
     setSensorThreshold(g_cfg.threshEnter);
+    setAllSensorSensitivities(g_cfg.sensorSens);
 }
 
 void saveConfigToNVS() {
@@ -82,6 +90,7 @@ void saveConfigToNVS() {
     prefs.putUChar("mode", g_cfg.runMode);
     prefs.putBool("inv",   g_cfg.enableInverted);
     prefs.putBool("skip",  g_cfg.skipStartExit);
+    prefs.putBytes("sens", g_cfg.sensorSens, sizeof(g_cfg.sensorSens));
     prefs.putBool("saved", true);
     prefs.end();
     Serial.println("//saved current tunings to nvs flash");
@@ -144,6 +153,7 @@ void telemetryProcessCommands() {
             g_cfg.runMode        = cmd.runMode;
             g_cfg.enableInverted = (cmd.enableInverted != 0);
             g_cfg.skipStartExit  = (cmd.skipStartExit != 0);
+            memcpy(g_cfg.sensorSens, cmd.sensorSens, sizeof(g_cfg.sensorSens));
 
             //disarm on mode switch for safety
             if (prevMode != g_cfg.runMode) {
@@ -151,6 +161,7 @@ void telemetryProcessCommands() {
             }
 
             setSensorThreshold(g_cfg.threshEnter);
+            setAllSensorSensitivities(g_cfg.sensorSens);
             telemetrySendConfig(ACK_PARAMS_OK);
             break;
         }
@@ -280,6 +291,7 @@ void telemetrySendConfig(uint8_t ackEvent) {
     pkt.runMode        = g_cfg.runMode;
     pkt.enableInverted = g_cfg.enableInverted ? 1 : 0;
     pkt.skipStartExit  = g_cfg.skipStartExit ? 1 : 0;
+    memcpy(pkt.sensorSens, g_cfg.sensorSens, sizeof(pkt.sensorSens));
     pkt.ackEvent       = ackEvent;
 
     pkt.checksum = calcProtocolChecksum(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt) - 1);
