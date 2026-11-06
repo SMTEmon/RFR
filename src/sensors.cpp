@@ -6,6 +6,7 @@ static const int selectPins[4] = {PIN_MUX_S0, PIN_MUX_S1, PIN_MUX_S2, PIN_MUX_S3
 static uint16_t rawMin[NUM_SENSORS];
 static uint16_t rawMax[NUM_SENSORS];
 static uint16_t sensorRaw[NUM_SENSORS];
+static int16_t sensorNormDark[NUM_SENSORS];
 static int16_t sensorVal[NUM_SENSORS];
 static bool sensorBlack[NUM_SENSORS];
 static uint8_t sensorSens[NUM_SENSORS];
@@ -16,6 +17,9 @@ static int16_t threshExit  = THRESH_BLACK_EXIT;
 
 static bool calibrating = false;
 static uint32_t calibStartTime = 0;
+static uint8_t lastFrameLift = 0;
+static uint32_t airLiftStartTime = 0;
+static bool airLiftActive = false;
 
 //mux helper functions
 static void initMux(const int pins[4]) {
@@ -57,6 +61,7 @@ void sensorsInit() {
         rawMin[i] = DEFAULT_RAW_MIN;
         rawMax[i] = DEFAULT_RAW_MAX;
         sensorRaw[i] = 0;
+        sensorNormDark[i] = 0;
         sensorVal[i] = 0;
         sensorBlack[i] = false;
         sensorSens[i] = DEFAULT_SENSOR_SENS[i];
@@ -66,6 +71,10 @@ void sensorsInit() {
 void setSensorThreshold(int16_t enterThresh) {
     threshEnter = constrain(enterThresh, 150, 950);
     threshExit  = constrain(enterThresh - 150, 50, 850); //150 units schmitt hysteresis
+}
+
+int16_t getSensorThreshold() {
+    return threshEnter;
 }
 
 void setSensorSensitivity(uint8_t idx, uint8_t sensPct) {
@@ -85,16 +94,34 @@ uint8_t getSensorSensitivity(uint8_t idx) {
     return sensorSens[idx];
 }
 
-void sensorsStartCalibration() {
-    calibrating = true;
-    calibStartTime = millis();
-    pinMode(PIN_LED, OUTPUT);
+uint8_t getLastFrameLift() {
+    return lastFrameLift;
+}
 
-    //seed with extremes so sweep discovers true min and max
+bool isRobotLifted() {
+    return airLiftActive;
+}
+
+void sensorsResetCalibrationMinMax() {
     for (uint8_t i = 0; i < NUM_SENSORS; i++) {
         rawMin[i] = 4095;
         rawMax[i] = 0;
     }
+}
+
+void sensorsSampleCalibrationStep() {
+    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+        uint16_t raw = sensorRaw[i];
+        if (raw < rawMin[i]) rawMin[i] = raw;
+        if (raw > rawMax[i]) rawMax[i] = raw;
+    }
+}
+
+void sensorsStartCalibration() {
+    calibrating = true;
+    calibStartTime = millis();
+    pinMode(PIN_LED, OUTPUT);
+    sensorsResetCalibrationMinMax();
 }
 
 bool sensorsUpdateCalibration() {
@@ -103,12 +130,7 @@ bool sensorsUpdateCalibration() {
     //blink led at 10hz during sweep
     digitalWrite(PIN_LED, ((millis() / 50) % 2) == 0 ? HIGH : LOW);
 
-    //update min max bounds from recent raw readings
-    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
-        uint16_t raw = sensorRaw[i];
-        if (raw < rawMin[i]) rawMin[i] = raw;
-        if (raw > rawMax[i]) rawMax[i] = raw;
-    }
+    sensorsSampleCalibrationStep();
 
     //check if 5s sweep completed
     if (millis() - calibStartTime >= CALIB_SWEEP_MS) {
@@ -170,39 +192,83 @@ void sensorsCalibrate() {
 }
 
 void sensorsRead(bool isInverted) {
+    uint8_t darkCount = 0;
+
+    //first pass: read raw adc and compute un-equalized norm
     for (uint8_t i = 0; i < NUM_SENSORS; i++) {
         uint8_t ch = logicalToMux(i);
         uint16_t raw = readSensorChannel(selectPins, PIN_MUX_SIG, ch);
         sensorRaw[i] = raw;
 
-        //handle muted channel
         if (sensorSens[i] == 0) {
+            sensorNormDark[i] = 0;
             sensorVal[i] = 0;
             sensorBlack[i] = false;
             continue;
         }
 
-        //guard against zero span
         uint16_t rmin = rawMin[i];
         uint16_t rmax = rawMax[i];
         if (rmax <= rmin + 50) {
             rmax = rmin + 50;
         }
 
-        //normalize 0 (white) to 1000 (black)
         int32_t clamped = constrain(raw, rmin, rmax);
         int16_t norm;
         if (ADC_HIGH_IS_BLACK) {
             norm = (clamped - rmin) * 1000 / (rmax - rmin);
         } else {
-            //dark gives low adc (~200) and white gives high adc (~4000)
             norm = (rmax - clamped) * 1000 / (rmax - rmin);
         }
+        sensorNormDark[i] = norm;
+        if (norm > 750) darkCount++;
+    }
 
-        //compute per-channel effective threshold (each 1% shifts threshold by 5 units)
-        //100% = neutral (enterI == threshEnter)
-        //>100% = lower threshold (more sensitive to black)
-        //<100% = higher threshold (rejects glare/floor)
+    //airborne detector: if 14+ sensors see near-complete dark (>750) for >120ms
+    if (darkCount >= 14) {
+        if (airLiftStartTime == 0) airLiftStartTime = millis();
+        if (millis() - airLiftStartTime > 120) {
+            airLiftActive = true;
+        }
+    } else {
+        airLiftStartTime = 0;
+        airLiftActive = false;
+    }
+
+    //common-mode floor baseline rejection:
+    //find lowest and 2nd lowest values among front row/bevels (S02..S13)
+    int16_t min1 = 1000;
+    int16_t min2 = 1000;
+    for (uint8_t i = 2; i <= 13; i++) {
+        if (sensorSens[i] == 0) continue;
+        int16_t val = sensorNormDark[i];
+        if (val < min1) {
+            min2 = min1;
+            min1 = val;
+        } else if (val < min2) {
+            min2 = val;
+        }
+    }
+
+    //min2 represents the ambient floor reflection level across the sensor bar
+    //if chassis pitches up during acceleration, min2 jumps up
+    int16_t floorLift = 0;
+    if (min2 < 420 && min2 > 40) {
+        //floor has lifted due to acceleration pitch-up or room glare
+        floorLift = min2 - 40;
+    }
+    lastFrameLift = static_cast<uint8_t>(constrain(floorLift, 0, 255));
+
+    //second pass: equalize analog curve and evaluate per-sensor schmitt trigger
+    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+        if (sensorSens[i] == 0) continue;
+
+        int16_t norm = sensorNormDark[i];
+
+        //subtract common-mode pitch-up lift for trigger evaluation
+        int16_t trigNorm = max<int16_t>(0, norm - floorLift);
+
+        //compute per-channel effective threshold
         int16_t enterI = constrain(threshEnter - (static_cast<int16_t>(sensorSens[i]) - 100) * 5, 80, 940);
         int16_t hystI  = min<int16_t>(120, enterI / 2);
         int16_t exitI  = max<int16_t>(40, enterI - hystI);
@@ -217,18 +283,17 @@ void sensorsRead(bool isInverted) {
 
         sensorVal[i] = isInverted ? (1000 - eqDark) : eqDark;
 
-        //per-channel schmitt trigger update
+        //per-channel schmitt trigger update using floor-lift-compensated reading
         if (!isInverted) {
-            if (norm >= enterI) {
+            if (trigNorm >= enterI) {
                 sensorBlack[i] = true;
-            } else if (norm <= exitI) {
+            } else if (trigNorm <= exitI) {
                 sensorBlack[i] = false;
             }
         } else {
-            //in inverted zone, black is the floor and white is the line
-            if (norm <= exitI) {
+            if (trigNorm <= exitI) {
                 sensorBlack[i] = true;
-            } else if (norm >= enterI) {
+            } else if (trigNorm >= enterI) {
                 sensorBlack[i] = false;
             }
         }
@@ -238,6 +303,11 @@ void sensorsRead(bool isInverted) {
 int16_t getSensorValue(uint8_t idx) {
     if (idx >= NUM_SENSORS) return 0;
     return sensorVal[idx];
+}
+
+int16_t getSensorNormalizedDark(uint8_t idx) {
+    if (idx >= NUM_SENSORS) return 0;
+    return sensorNormDark[idx];
 }
 
 uint16_t getSensorRaw(uint8_t idx) {
@@ -310,21 +380,24 @@ int32_t computePositionError(bool isInverted) {
 
     if (!isInverted) {
         //normal mode: weighted centroid across 12 sensors (idx 2..13)
+        //subtract white-floor baseline noise (CENTROID_NOISE_FLOOR)
         for (uint8_t i = 2; i <= 13; i++) {
             int16_t val = sensorVal[i];
-            weightedSum += static_cast<int64_t>(val) * PID_WEIGHTS_12[i - 2];
-            totalWeight += val;
+            int16_t cleanVal = val > CENTROID_NOISE_FLOOR ? (val - CENTROID_NOISE_FLOOR) : 0;
+            weightedSum += static_cast<int64_t>(cleanVal) * PID_WEIGHTS_12[i - 2];
+            totalWeight += cleanVal;
         }
     } else {
         //inverted mode: strictly across 8 front sensors (idx 4..11)
         for (uint8_t i = 4; i <= 11; i++) {
             int16_t val = sensorVal[i];
-            weightedSum += static_cast<int64_t>(val) * PID_WEIGHTS_8[i - 4];
-            totalWeight += val;
+            int16_t cleanVal = val > CENTROID_NOISE_FLOOR ? (val - CENTROID_NOISE_FLOOR) : 0;
+            weightedSum += static_cast<int64_t>(cleanVal) * PID_WEIGHTS_8[i - 4];
+            totalWeight += cleanVal;
         }
     }
 
-    if (totalWeight < 100) {
+    if (totalWeight < 60) {
         //loss of line: keep last known error sign to guide recovery
         return lastError > 0 ? 5500 : -5500;
     }

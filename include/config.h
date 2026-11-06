@@ -96,12 +96,33 @@ constexpr bool DEFAULT_SKIP_START_EXIT = true; // default true to follow line im
 // odometry & distance thresholds
 // shortcut: default 28 ticks per cm, calibrate with ruler on bench
 constexpr float TICKS_PER_CM = 28.0f;
+constexpr float WHEEL_BASE_CM = 13.5f; //chassis wheel track width in cm
 constexpr int32_t START_EXIT_TICKS = static_cast<int32_t>(12.0f * TICKS_PER_CM);
 constexpr int32_t MAX_GAP_TICKS = static_cast<int32_t>(14.0f * TICKS_PER_CM);
 constexpr int32_t WING_SETBACK_TICKS = static_cast<int32_t>(5.5f * TICKS_PER_CM);
 constexpr int32_t STOP_BOX_TICKS = static_cast<int32_t>(7.5f * TICKS_PER_CM);
 constexpr int32_t LATCH_WINDOW_TICKS = static_cast<int32_t>(8.0f * TICKS_PER_CM);
 constexpr int32_t UTURN_180_TICKS = static_cast<int32_t>(20.0f * TICKS_PER_CM);
+
+//spin bounds & timeouts (prevents infinite spinning)
+constexpr float MAX_SHARP_SPIN_DEG     = 125.0f; //max degrees before aborting sharp turn
+constexpr float UTURN_TARGET_DEG       = 165.0f; //min differential rotation before re-locking u-turn
+constexpr float UTURN_MAX_SPIN_DEG     = 230.0f; //hard angle cap to prevent infinite u-turn spin
+constexpr uint32_t MAX_SPIN_TIMEOUT_MS = 1400;   //failsafe timeout for any spin in ms
+
+//acceleration slew limiter & centroid filtering (anti-wheelie nose-lift rejection)
+constexpr int16_t DEFAULT_ACCEL_SLEW   = 3;      //max +3 pwm per 2ms tick (~370ms 0->200 ramp, braking is instant)
+constexpr int16_t CENTROID_NOISE_FLOOR = 220;    //subtract floor noise from sensor values in centroid
+
+//junction & off-line behavior defaults
+constexpr uint8_t DEFAULT_JUNCTION_MODE = 0;     //0=loop straight priority, 1=lhr, 2=rhr
+constexpr bool DEFAULT_ALLOW_UTURN     = false;  //false stops cleanly on line loss instead of u-turning
+
+//crawling & autotune dynamics
+constexpr float CRAWL_SPEED_CM_S       = 14.0f;  //regulated crawl target
+constexpr int16_t CRAWL_BASE_PWM       = 82;     //initial crawl pwm seed
+constexpr int32_t SOFT_SAVE_ERR_01MM   = 4200;   //42.0mm lateral drift triggers soft-save reflex
+constexpr float BRAKE_DECEL_PWM_PER_CM = 2.8f;   //pre-corner braking ramp slope
 
 // safety & deadman timing
 constexpr uint32_t MANUAL_DEADMAN_MS = 250; // auto-stop in wasd mode if no heartbeat for 250ms

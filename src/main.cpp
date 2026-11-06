@@ -5,6 +5,7 @@
 #include "sensors.h"
 #include "navigator.h"
 #include "telemetry.h"
+#include "autotune.h"
 
 static uint32_t lastLoopMicros = 0;
 static uint32_t lastPrintMillis = 0;
@@ -114,6 +115,9 @@ void setup() {
     //setup esp-now wireless telemetry and nvs config
     telemetryInit();
 
+    //initialize autotune & mapping engine
+    autotuneInit();
+
     Serial.println("--- LFR Booting (Motors Disarmed) ---");
 
     //calibrate min max or load bench defaults
@@ -153,23 +157,19 @@ void loop() {
     //handle disarmed and active stop braking transition
     if (!g_armed) {
         if (wasArmed) {
-            //robot was just running, apply 150ms active electromagnetic short brake
             wasArmed = false;
             stopBrakeTimer = millis();
             motorsArm(true);
             shortBrake();
         } else if (stopBrakeTimer > 0 && millis() - stopBrakeTimer < STOP_BRAKE_MS) {
-            //holding active brake
             motorsArm(true);
             shortBrake();
         } else {
-            //transition to passive coast and disable h-bridge
             stopBrakeTimer = 0;
             coastStop();
             motorsArm(false);
         }
 
-        //keep lastLoopMicros updated so it never accumulates catch-up bursts when re-armed
         lastLoopMicros = micros();
 
         if (g_cfg.runMode == MODE_BENCH_DIAG) {
@@ -204,7 +204,6 @@ void loop() {
 
     //manual wasd rc mode branch
     if (g_cfg.runMode == MODE_MANUAL_WASD) {
-        //deadman watchdog: if no manual packet received for 250ms, stop motors
         if (millis() - g_lastManualCmdMs > MANUAL_DEADMAN_MS) {
             coastStop();
         } else {
@@ -222,32 +221,61 @@ void loop() {
         return;
     }
 
-    //autonomous track mode branch
+    //track mapping & progressive auto-tune mode branch
+    if (g_cfg.runMode == MODE_MAP_AND_TUNE) {
+        uint32_t currentMicros = micros();
+        if (currentMicros - lastLoopMicros >= LOOP_INTERVAL_US) {
+            if (currentMicros - lastLoopMicros > 50000) {
+                lastLoopMicros = currentMicros;
+            } else {
+                lastLoopMicros += LOOP_INTERVAL_US;
+            }
+
+            autotuneUpdate();
+
+            if (getTuneState() == TUNE_WAIT_VALIDATE || getTuneState() == TUNE_COMPLETE || getTuneState() == TUNE_SAFE_ABORT) {
+                g_armed = false;
+            }
+        }
+        return;
+    }
+
+    //mapped race mode branch (segment speed limits + gain scheduling)
+    if (g_cfg.runMode == MODE_MAPPED_RACE) {
+        motorsArm(true);
+        uint32_t currentMicros = micros();
+        if (currentMicros - lastLoopMicros >= LOOP_INTERVAL_US) {
+            if (currentMicros - lastLoopMicros > 50000) {
+                lastLoopMicros = currentMicros;
+            } else {
+                lastLoopMicros += LOOP_INTERVAL_US;
+            }
+
+            mappedRaceUpdate();
+        }
+        return;
+    }
+
+    //standard autonomous track mode branch
     motorsArm(true);
     uint32_t currentMicros = micros();
 
-    //deterministic 500hz control loop
     if (currentMicros - lastLoopMicros >= LOOP_INTERVAL_US) {
-        //guard against catch-up burst if stalled
         if (currentMicros - lastLoopMicros > 50000) {
             lastLoopMicros = currentMicros;
         } else {
             lastLoopMicros += LOOP_INTERVAL_US;
         }
 
-        //advance state machine and motor outputs
         navigatorUpdate();
 
-        //auto-disarm when finish box reached
         if (getNavState() == STATE_STOPPED) {
             g_armed = false;
         }
     }
 
-    //debug telemetry every 100ms
     if (millis() - lastPrintMillis >= 100) {
         lastPrintMillis = millis();
-
         printSensorMap();
         printFeatureTags();
         Serial.printf("| State: %-15s Dist: %5.1f cm  L: %5ld  R: %5ld\n",

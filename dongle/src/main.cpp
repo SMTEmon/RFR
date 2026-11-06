@@ -10,6 +10,9 @@ static uint8_t lfrMac[6] = {0xB4, 0xBF, 0xE9, 0x0F, 0x13, 0xC0};
 static bool lfrKnown = true;
 static String serialRxBuf = "";
 static uint8_t lastSens[16] = {100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100};
+static uint8_t lastSlew = 3;
+static uint8_t lastJunc = 0;
+static uint8_t lastUturn = 0;
 
 //state name lookup
 static const char* getStateName(uint8_t st) {
@@ -85,8 +88,11 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
         if (cfg->checksum != expected) return;
 
         memcpy(lastSens, cfg->sensorSens, 16);
+        lastSlew = cfg->accelSlew;
+        lastJunc = cfg->junctionMode;
+        lastUturn = cfg->allowUturn;
 
-        Serial.printf("{\"t\":\"cfg\",\"base\":%d,\"min\":%d,\"max\":%d,\"turn\":%d,\"thr\":%d,\"kp\":%.3f,\"kd\":%.3f,\"enc\":%.1f,\"mode\":%u,\"inv\":%u,\"skip\":%u,\"ack\":%u,\"sens\":[",
+        Serial.printf("{\"t\":\"cfg\",\"base\":%d,\"min\":%d,\"max\":%d,\"turn\":%d,\"thr\":%d,\"kp\":%.3f,\"kd\":%.3f,\"enc\":%.1f,\"mode\":%u,\"inv\":%u,\"skip\":%u,\"slew\":%u,\"junc\":%u,\"uturn\":%u,\"ack\":%u,\"sens\":[",
                       cfg->baseSpeed,
                       cfg->minSpeed,
                       cfg->maxSpeed,
@@ -98,6 +104,9 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
                       cfg->runMode,
                       cfg->enableInverted,
                       cfg->skipStartExit,
+                      cfg->accelSlew,
+                      cfg->junctionMode,
+                      cfg->allowUturn,
                       cfg->ackEvent);
         for (uint8_t i = 0; i < 16; i++) {
             Serial.print(cfg->sensorSens[i]);
@@ -106,11 +115,80 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
         Serial.println("]}");
         return;
     }
+
+    if (len == sizeof(MapPathPacket)) {
+        const MapPathPacket *path = reinterpret_cast<const MapPathPacket*>(data);
+        if (path->header != 0xB1) return;
+        uint8_t expected = calcProtocolChecksum(data, sizeof(MapPathPacket) - 1);
+        if (path->checksum != expected) return;
+
+        Serial.printf("{\"t\":\"map_path\",\"len\":%u,\"wind\":%d,\"gaps\":%u,\"thr\":%d,\"slew\":%u,\"pts\":[",
+                      path->totalLengthCm, path->windingSign, path->hasGaps, path->optThresh, path->optAccelSlew);
+        for (uint8_t i = 0; i < path->numPoints; i++) {
+            Serial.print(path->dThetaScaled[i]);
+            if (i < path->numPoints - 1) Serial.print(",");
+        }
+        Serial.print("],\"sens\":[");
+        for (uint8_t i = 0; i < 16; i++) {
+            Serial.print(path->optSens[i]);
+            if (i < 15) Serial.print(",");
+        }
+        Serial.println("]}");
+        return;
+    }
+
+    if (len == sizeof(MapSegmentsPacket)) {
+        const MapSegmentsPacket *segs = reinterpret_cast<const MapSegmentsPacket*>(data);
+        if (segs->header != 0xB2) return;
+        uint8_t expected = calcProtocolChecksum(data, sizeof(MapSegmentsPacket) - 1);
+        if (segs->checksum != expected) return;
+
+        Serial.printf("{\"t\":\"map_segs\",\"n\":%u,\"segs\":[", segs->numSegments);
+        for (uint8_t i = 0; i < segs->numSegments; i++) {
+            Serial.printf("{\"type\":%u,\"start\":%u,\"len\":%u,\"rad\":%d,\"pwm\":%u}",
+                          segs->segs[i].type, segs->segs[i].startCm, segs->segs[i].lengthCm,
+                          segs->segs[i].radiusCm, segs->segs[i].maxSafePwm);
+            if (i < segs->numSegments - 1) Serial.print(",");
+        }
+        Serial.println("]}");
+        return;
+    }
+
+    if (len == sizeof(TuneStatusPacket)) {
+        const TuneStatusPacket *st = reinterpret_cast<const TuneStatusPacket*>(data);
+        if (st->header != 0xB3) return;
+        uint8_t expected = calcProtocolChecksum(data, sizeof(TuneStatusPacket) - 1);
+        if (st->checksum != expected) return;
+
+        Serial.printf("{\"t\":\"tune_st\",\"st\":%u,\"tier\":%u,\"n_tier\":%u,\"sub\":%u,\"lap\":%u,\"seg\":%u,\"match\":%u,\"dist\":%u,\"tot\":%u,\"hdg\":%d,\"spwm\":%d,\"cpwm\":%d,\"kp\":%.4f,\"kd\":%.3f,\"rms\":%u,\"max\":%u,\"score\":%u,\"lift\":%u,\"flags\":%u}\n",
+                      st->tuneState, st->currentTier, st->totalTiers, st->subTrial, st->lapNumber,
+                      st->currentSegIdx, st->overlapMatchPct, st->currentDistCm, st->totalLengthCm,
+                      st->netHeadingDeg, st->straightPwm, st->cornerPwm, st->activeKp, st->activeKd,
+                      st->lastRmsErr01Mm, st->lastMaxErr01Mm, st->lastQualityScore, st->lastLiftPeak, st->statusFlags);
+        return;
+    }
+
+    if (len == sizeof(GainTablePacket)) {
+        const GainTablePacket *tbl = reinterpret_cast<const GainTablePacket*>(data);
+        if (tbl->header != 0xB4) return;
+        uint8_t expected = calcProtocolChecksum(data, sizeof(GainTablePacket) - 1);
+        if (tbl->checksum != expected) return;
+
+        Serial.printf("{\"t\":\"gain_lut\",\"n\":%u,\"tiers\":[", tbl->numTiers);
+        for (uint8_t i = 0; i < tbl->numTiers; i++) {
+            Serial.printf("{\"spwm\":%d,\"cpwm\":%d,\"kp\":%.4f,\"kd\":%.3f,\"rms\":%u,\"score\":%u,\"st\":%u}",
+                          tbl->tiers[i].straightPwm, tbl->tiers[i].cornerPwm,
+                          tbl->tiers[i].kpX10000 * 0.0001f, tbl->tiers[i].kdX1000 * 0.001f,
+                          tbl->tiers[i].rmsErr01Mm, tbl->tiers[i].qualityScore, tbl->tiers[i].state);
+            if (i < tbl->numTiers - 1) Serial.print(",");
+        }
+        Serial.println("]}");
+        return;
+    }
 }
 
 static void sendCommand(const CommandPacket &cmd) {
     if (!lfrKnown) {
-        //broadcast if lfr mac not learned yet
         uint8_t bcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
         if (!esp_now_is_peer_exist(bcast)) {
             esp_now_peer_info_t peer = {};
@@ -150,6 +228,9 @@ static void handleSerialCommand(const String &line) {
     pkt.enableInverted = 0;
     pkt.skipStartExit  = 1;
     memcpy(pkt.sensorSens, lastSens, 16);
+    pkt.accelSlew      = lastSlew;
+    pkt.junctionMode   = lastJunc;
+    pkt.allowUturn     = lastUturn;
     pkt.manualLeft     = 0;
     pkt.manualRight    = 0;
 
@@ -177,6 +258,12 @@ static void handleSerialCommand(const String &line) {
         pkt.runMode        = extractInt("\"mode\":", 0);
         pkt.enableInverted = extractInt("\"inv\":",  0);
         pkt.skipStartExit  = extractInt("\"skip\":", 1);
+        pkt.accelSlew      = extractInt("\"slew\":", 3);
+        pkt.junctionMode   = extractInt("\"junc\":", 0);
+        pkt.allowUturn     = extractInt("\"uturn\":", 0);
+        lastSlew = pkt.accelSlew;
+        lastJunc = pkt.junctionMode;
+        lastUturn = pkt.allowUturn;
 
         int sensIdx = line.indexOf("\"sens\":[");
         if (sensIdx != -1) {
@@ -196,6 +283,8 @@ static void handleSerialCommand(const String &line) {
     } else if (cmdType == CMD_MANUAL_DRIVE) {
         pkt.manualLeft     = extractInt("\"l\":", 0);
         pkt.manualRight    = extractInt("\"r\":", 0);
+    } else if (cmdType == CMD_MAP_START_CRAWL) {
+        pkt.enableInverted = extractInt("\"fig8\":", 0);
     }
 
     pkt.checksum = calcProtocolChecksum(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt) - 1);

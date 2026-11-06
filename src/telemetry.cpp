@@ -4,6 +4,7 @@
 #include "encoders.h"
 #include "motors.h"
 #include "navigator.h"
+#include "autotune.h"
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
@@ -18,6 +19,7 @@ volatile uint32_t g_lastManualCmdMs = 0;
 static Preferences prefs;
 static uint32_t lastTelemTime = 0;
 static uint32_t lastCfgSyncTime = 0;
+static uint32_t lastTuneStatusTime = 0;
 static bool peerAdded = false;
 
 static portMUX_TYPE cmdMux = portMUX_INITIALIZER_UNLOCKED;
@@ -37,6 +39,9 @@ static void loadDefaultConfig() {
     g_cfg.runMode         = BENCH_DEBUG_MODE ? MODE_BENCH_DIAG : (MOTOR_TEST_MODE ? MODE_MOTOR_TEST : MODE_AUTONOMOUS);
     g_cfg.enableInverted  = ENABLE_INVERTED_ZONE;
     g_cfg.skipStartExit   = DEFAULT_SKIP_START_EXIT;
+    g_cfg.accelSlew       = DEFAULT_ACCEL_SLEW;
+    g_cfg.junctionMode    = DEFAULT_JUNCTION_MODE;
+    g_cfg.allowUturn      = DEFAULT_ALLOW_UTURN;
     for (uint8_t i = 0; i < NUM_SENSORS; i++) {
         g_cfg.sensorSens[i] = DEFAULT_SENSOR_SENS[i];
     }
@@ -48,6 +53,7 @@ void loadConfigFromNVS() {
     if (!prefs.begin("lfr_cfg", true)) { //read-only mode
         setSensorThreshold(g_cfg.threshEnter);
         setAllSensorSensitivities(g_cfg.sensorSens);
+        setMotorAccelSlew(g_cfg.accelSlew);
         return;
     }
 
@@ -63,6 +69,9 @@ void loadConfigFromNVS() {
         g_cfg.runMode         = prefs.getUChar("mode", g_cfg.runMode);
         g_cfg.enableInverted  = prefs.getBool("inv",   g_cfg.enableInverted);
         g_cfg.skipStartExit   = prefs.getBool("skip",  g_cfg.skipStartExit);
+        g_cfg.accelSlew       = prefs.getUChar("slew", g_cfg.accelSlew);
+        g_cfg.junctionMode    = prefs.getUChar("junc", g_cfg.junctionMode);
+        g_cfg.allowUturn      = prefs.getBool("uturn", g_cfg.allowUturn);
         if (prefs.isKey("sens")) {
             prefs.getBytes("sens", g_cfg.sensorSens, sizeof(g_cfg.sensorSens));
         }
@@ -72,6 +81,7 @@ void loadConfigFromNVS() {
 
     setSensorThreshold(g_cfg.threshEnter);
     setAllSensorSensitivities(g_cfg.sensorSens);
+    setMotorAccelSlew(g_cfg.accelSlew);
 }
 
 void saveConfigToNVS() {
@@ -90,6 +100,9 @@ void saveConfigToNVS() {
     prefs.putUChar("mode", g_cfg.runMode);
     prefs.putBool("inv",   g_cfg.enableInverted);
     prefs.putBool("skip",  g_cfg.skipStartExit);
+    prefs.putUChar("slew", g_cfg.accelSlew);
+    prefs.putUChar("junc", g_cfg.junctionMode);
+    prefs.putBool("uturn", g_cfg.allowUturn);
     prefs.putBytes("sens", g_cfg.sensorSens, sizeof(g_cfg.sensorSens));
     prefs.putBool("saved", true);
     prefs.end();
@@ -153,6 +166,9 @@ void telemetryProcessCommands() {
             g_cfg.runMode        = cmd.runMode;
             g_cfg.enableInverted = (cmd.enableInverted != 0);
             g_cfg.skipStartExit  = (cmd.skipStartExit != 0);
+            g_cfg.accelSlew       = cmd.accelSlew;
+            g_cfg.junctionMode    = cmd.junctionMode;
+            g_cfg.allowUturn      = (cmd.allowUturn != 0);
             memcpy(g_cfg.sensorSens, cmd.sensorSens, sizeof(g_cfg.sensorSens));
 
             //disarm on mode switch for safety
@@ -162,6 +178,7 @@ void telemetryProcessCommands() {
 
             setSensorThreshold(g_cfg.threshEnter);
             setAllSensorSensitivities(g_cfg.sensorSens);
+            setMotorAccelSlew(g_cfg.accelSlew);
             telemetrySendConfig(ACK_PARAMS_OK);
             break;
         }
@@ -196,6 +213,29 @@ void telemetryProcessCommands() {
             telemetrySendConfig(ACK_CALIB_DEFAULT);
             break;
 
+        case CMD_MAP_START_CRAWL:
+            g_cfg.runMode = MODE_MAP_AND_TUNE;
+            g_armed = true;
+            autotuneStartCrawl(cmd.enableInverted != 0);
+            break;
+
+        case CMD_MAP_MARK_LAP:
+            autotuneMarkLapNow();
+            break;
+
+        case CMD_TUNE_VALIDATE:
+            g_armed = true;
+            autotuneValidateAndStartSweep();
+            break;
+
+        case CMD_TUNE_SAVE_ALL:
+            autotuneSaveToNVS();
+            break;
+
+        case CMD_MAP_REQUEST:
+            autotuneRequestSync();
+            break;
+
         default:
             break;
     }
@@ -218,7 +258,6 @@ void telemetryInit() {
         return;
     }
 
-    //register rx callback
     esp_now_register_recv_cb(onDataRecv);
 
     //add dongle as peer
@@ -292,10 +331,37 @@ void telemetrySendConfig(uint8_t ackEvent) {
     pkt.enableInverted = g_cfg.enableInverted ? 1 : 0;
     pkt.skipStartExit  = g_cfg.skipStartExit ? 1 : 0;
     memcpy(pkt.sensorSens, g_cfg.sensorSens, sizeof(pkt.sensorSens));
+    pkt.accelSlew      = g_cfg.accelSlew;
+    pkt.junctionMode   = g_cfg.junctionMode;
+    pkt.allowUturn     = g_cfg.allowUturn ? 1 : 0;
     pkt.ackEvent       = ackEvent;
 
     pkt.checksum = calcProtocolChecksum(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt) - 1);
 
+    esp_now_send(DONGLE_MAC, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+}
+
+void telemetryBroadcastMapPath() {
+    if (!peerAdded) return;
+    const MapPathPacket &pkt = getMapPath();
+    esp_now_send(DONGLE_MAC, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+}
+
+void telemetryBroadcastMapSegments() {
+    if (!peerAdded) return;
+    const MapSegmentsPacket &pkt = getMapSegments();
+    esp_now_send(DONGLE_MAC, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+}
+
+void telemetryBroadcastTuneStatus() {
+    if (!peerAdded) return;
+    const TuneStatusPacket &pkt = getTuneStatus();
+    esp_now_send(DONGLE_MAC, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
+}
+
+void telemetryBroadcastGainTable() {
+    if (!peerAdded) return;
+    const GainTablePacket &pkt = getGainTable();
     esp_now_send(DONGLE_MAC, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
 }
 
@@ -312,5 +378,13 @@ void telemetryUpdate() {
     if (now - lastCfgSyncTime >= 1500) {
         lastCfgSyncTime = now;
         telemetrySendConfig(ACK_NONE);
+    }
+
+    //tune status broadcast at 4hz during mapping / tuning / racing
+    if (g_cfg.runMode == MODE_MAP_AND_TUNE || g_cfg.runMode == MODE_MAPPED_RACE) {
+        if (now - lastTuneStatusTime >= 250) {
+            lastTuneStatusTime = now;
+            telemetryBroadcastTuneStatus();
+        }
     }
 }
