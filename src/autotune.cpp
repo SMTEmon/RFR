@@ -387,6 +387,7 @@ void autotuneUpdate() {
                 driveDirect(-70, 70);
                 if (isSensorBlack(7) || isSensorBlack(8)) {
                     driveDirect(0, 0);
+                    sensorsFinalizeCalibration();
                     crawlStartLeft = leftEnc;
                     crawlStartRight = rightEnc;
                     prevBinLeft = leftEnc;
@@ -414,7 +415,7 @@ void autotuneUpdate() {
             //steer along line at slow crawl speed
             int32_t error = computePositionError(false);
             int16_t correction = static_cast<int16_t>(g_cfg.pidKp * error);
-            drive(crawlBasePwm + correction, crawlBasePwm - correction);
+            drive(constrain(crawlBasePwm + correction, 0, 255), constrain(crawlBasePwm - correction, 0, 255));
 
             //check bin progression (every 2.5cm)
             int32_t binDistTicks = (currentTicks - (prevBinLeft + prevBinRight) / 2);
@@ -474,7 +475,8 @@ void autotuneUpdate() {
                                 float sumDiff = 0.0f;
                                 for (uint16_t k = 0; k < overlapBins; k++) {
                                     uint16_t idxA = totalCrawlBins - 1 - k;
-                                    uint16_t idxB = idxA - testL;
+                                    int32_t idxB = calcCorrelationPairIdx(totalCrawlBins, k, testL);
+                                    if (idxB < 0) continue;
                                     sumDiff += fabsf(static_cast<float>(crawlDTheta[idxA] - crawlDTheta[idxB]));
                                 }
                                 if (sumDiff < minDiff) {
@@ -534,7 +536,7 @@ void autotuneUpdate() {
             //steer along track
             int16_t correction = static_cast<int16_t>(testKp * error);
             int16_t targetSpeed = (abs(error) > 2000) ? testCornerPwm : testStraightPwm;
-            drive(targetSpeed + correction, targetSpeed - correction);
+            drive(constrain(targetSpeed + correction, 0, 255), constrain(targetSpeed - correction, 0, 255));
 
             //accumulate lap metrics
             sampleCount++;
@@ -644,8 +646,13 @@ void autotuneUpdate() {
 
 //500hz mapped race update with pre-corner braking and gain scheduling
 void mappedRaceUpdate() {
+    if (!mapValid || lockedLapBins == 0 || g_mapSegs.numSegments == 0) {
+        drive(0, 0);
+        return;
+    }
+
     int32_t currentTicks = getAvgTicks();
-    int32_t lapDistTicks = (currentTicks % cmToTicks(lockedLapBins * BIN_CM));
+    int32_t lapDistTicks = wrapLapTicks(currentTicks, cmToTicks(lockedLapBins * BIN_CM));
     float currentDistCm = ticksToCm(lapDistTicks);
 
     //find current segment
@@ -689,8 +696,9 @@ void mappedRaceUpdate() {
 
     static int32_t prevMappedError = 0;
     int32_t error = computePositionError(false);
-    float dError = static_cast<float>(error - prevMappedError) / (LOOP_INTERVAL_US * 1e-6f);
+    int32_t dErrRaw = constrain(error - prevMappedError, -1500, 1500);
+    float dError = static_cast<float>(dErrRaw) / (LOOP_INTERVAL_US * 1e-6f);
     prevMappedError = error;
     int16_t correction = static_cast<int16_t>(curKp * error + curKd * dError * 0.001f);
-    drive(static_cast<int16_t>(targetPwm) + correction, static_cast<int16_t>(targetPwm) - correction);
+    drive(constrain(static_cast<int16_t>(targetPwm) + correction, 0, 255), constrain(static_cast<int16_t>(targetPwm) - correction, 0, 255));
 }

@@ -9,6 +9,7 @@
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <Preferences.h>
+#include <esp_system.h>
 
 RuntimeConfig g_cfg;
 volatile bool g_armed = false; //safe disarmed by default on boot
@@ -16,15 +17,32 @@ volatile int16_t g_manualLeft = 0;
 volatile int16_t g_manualRight = 0;
 volatile uint32_t g_lastManualCmdMs = 0;
 
+//reset tracking across warm reboots
+RTC_NOINIT_ATTR static uint32_t s_bootCount;
+RTC_NOINIT_ATTR static uint32_t s_brownoutCount;
+RTC_NOINIT_ATTR static uint32_t s_magicMarker;
+
+static esp_reset_reason_t s_lastResetReason = ESP_RST_UNKNOWN;
+static bool s_isAbnormalReset = false;
+
 static Preferences prefs;
 static uint32_t lastTelemTime = 0;
 static uint32_t lastCfgSyncTime = 0;
 static uint32_t lastTuneStatusTime = 0;
+static uint32_t lastSerialTelemTime = 0;
+static uint32_t lastSerialStatusTime = 0;
 static bool peerAdded = false;
 
 static portMUX_TYPE cmdMux = portMUX_INITIALIZER_UNLOCKED;
 static CommandPacket cmdMailbox = {};
 static volatile bool cmdPending = false;
+
+static char s_serialBuf[256];
+static uint8_t s_serialLen = 0;
+
+static void telemetrySendNowUSB();
+static void telemetrySendConfigUSB(uint8_t ackEvent);
+static void parseSerialCommand(const char *line);
 
 //default fallback values from config.h
 static void loadDefaultConfig() {
@@ -58,6 +76,7 @@ void loadConfigFromNVS() {
     }
 
     if (prefs.isKey("saved")) {
+        uint8_t cfgVer = prefs.getUChar("ver", 1);
         g_cfg.baseSpeed       = prefs.getShort("base", g_cfg.baseSpeed);
         g_cfg.minSpeed        = prefs.getShort("min",  g_cfg.minSpeed);
         g_cfg.maxSpeed        = prefs.getShort("max",  g_cfg.maxSpeed);
@@ -75,6 +94,9 @@ void loadConfigFromNVS() {
         if (prefs.isKey("sens")) {
             prefs.getBytes("sens", g_cfg.sensorSens, sizeof(g_cfg.sensorSens));
         }
+        if (cfgVer < 2 && g_cfg.accelSlew > 3) {
+            g_cfg.accelSlew = DEFAULT_ACCEL_SLEW;
+        }
         Serial.println("//loaded custom tunings from nvs");
     }
     prefs.end();
@@ -89,6 +111,7 @@ void saveConfigToNVS() {
         return;
     }
 
+    prefs.putUChar("ver", 2);
     prefs.putShort("base", g_cfg.baseSpeed);
     prefs.putShort("min",  g_cfg.minSpeed);
     prefs.putShort("max",  g_cfg.maxSpeed);
@@ -125,14 +148,107 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
     if (cmd->checksum != expected) return;
 
     //store into mailbox atomically
-    portENTER_CRITICAL_ISR(&cmdMux);
+    portENTER_CRITICAL(&cmdMux);
     cmdMailbox = *cmd;
     cmdPending = true;
-    portEXIT_CRITICAL_ISR(&cmdMux);
+    portEXIT_CRITICAL(&cmdMux);
+}
+
+static void parseSerialCommand(const char *line) {
+    const char *cmdPtr = strstr(line, "\"cmd\":");
+    if (!cmdPtr) return;
+    uint8_t cmdType = static_cast<uint8_t>(atoi(cmdPtr + 6));
+
+    CommandPacket pkt = {};
+    pkt.header = 0x55;
+    pkt.cmdType = cmdType;
+    pkt.baseSpeed = g_cfg.baseSpeed;
+    pkt.minSpeed = g_cfg.minSpeed;
+    pkt.maxSpeed = g_cfg.maxSpeed;
+    pkt.turnSpeed = g_cfg.turnSpeed;
+    pkt.threshEnter = g_cfg.threshEnter;
+    pkt.pidKp = g_cfg.pidKp;
+    pkt.pidKd = g_cfg.pidKd;
+    pkt.encKp = g_cfg.encKp;
+    pkt.runMode = g_cfg.runMode;
+    pkt.enableInverted = g_cfg.enableInverted ? 1 : 0;
+    pkt.skipStartExit = g_cfg.skipStartExit ? 1 : 0;
+    memcpy(pkt.sensorSens, g_cfg.sensorSens, sizeof(pkt.sensorSens));
+    pkt.accelSlew = g_cfg.accelSlew;
+    pkt.junctionMode = g_cfg.junctionMode;
+    pkt.allowUturn = g_cfg.allowUturn ? 1 : 0;
+    pkt.manualLeft = 0;
+    pkt.manualRight = 0;
+
+    auto extractInt = [&](const char *key, int defaultVal) -> int {
+        const char *p = strstr(line, key);
+        if (!p) return defaultVal;
+        return atoi(p + strlen(key));
+    };
+    auto extractFloat = [&](const char *key, float defaultVal) -> float {
+        const char *p = strstr(line, key);
+        if (!p) return defaultVal;
+        return static_cast<float>(atof(p + strlen(key)));
+    };
+
+    if (cmdType == CMD_SET_PARAMS) {
+        pkt.baseSpeed = extractInt("\"base\":", pkt.baseSpeed);
+        pkt.minSpeed = extractInt("\"min\":", pkt.minSpeed);
+        pkt.maxSpeed = extractInt("\"max\":", pkt.maxSpeed);
+        pkt.turnSpeed = extractInt("\"turn\":", pkt.turnSpeed);
+        pkt.threshEnter = extractInt("\"thr\":", pkt.threshEnter);
+        pkt.pidKp = extractFloat("\"kp\":", pkt.pidKp);
+        pkt.pidKd = extractFloat("\"kd\":", pkt.pidKd);
+        pkt.encKp = extractFloat("\"enc\":", pkt.encKp);
+        pkt.runMode = extractInt("\"mode\":", pkt.runMode);
+        pkt.enableInverted = extractInt("\"inv\":", pkt.enableInverted);
+        pkt.skipStartExit = extractInt("\"skip\":", pkt.skipStartExit);
+        pkt.accelSlew = extractInt("\"slew\":", pkt.accelSlew);
+        pkt.junctionMode = extractInt("\"junc\":", pkt.junctionMode);
+        pkt.allowUturn = extractInt("\"uturn\":", pkt.allowUturn);
+
+        const char *sensPtr = strstr(line, "\"sens\":[");
+        if (sensPtr) {
+            const char *p = sensPtr + 8;
+            for (uint8_t i = 0; i < NUM_SENSORS && *p; i++) {
+                pkt.sensorSens[i] = static_cast<uint8_t>(atoi(p));
+                const char *comma = strchr(p, ',');
+                const char *close = strchr(p, ']');
+                if (comma && (!close || comma < close)) p = comma + 1;
+                else break;
+            }
+        }
+    } else if (cmdType == CMD_MANUAL_DRIVE) {
+        pkt.manualLeft = extractInt("\"l\":", 0);
+        pkt.manualRight = extractInt("\"r\":", 0);
+    } else if (cmdType == CMD_MAP_START_CRAWL) {
+        pkt.enableInverted = extractInt("\"fig8\":", 0);
+    }
+
+    portENTER_CRITICAL(&cmdMux);
+    cmdMailbox = pkt;
+    cmdPending = true;
+    portEXIT_CRITICAL(&cmdMux);
+}
+
+static void telemetryProcessSerial() {
+    while (Serial.available()) {
+        char c = static_cast<char>(Serial.read());
+        if (c == '\n' || c == '\r') {
+            if (s_serialLen > 0) {
+                s_serialBuf[s_serialLen] = '\0';
+                parseSerialCommand(s_serialBuf);
+                s_serialLen = 0;
+            }
+        } else if (s_serialLen < sizeof(s_serialBuf) - 1) {
+            s_serialBuf[s_serialLen++] = c;
+        }
+    }
 }
 
 //drain and execute mailbox commands on core 1
 void telemetryProcessCommands() {
+    telemetryProcessSerial();
     if (!cmdPending) return;
 
     CommandPacket cmd;
@@ -244,8 +360,28 @@ void telemetryProcessCommands() {
 void telemetryInit() {
     loadConfigFromNVS();
 
-    //setup wifi in station mode without connecting to any ap
+    //evaluate hardware reset reason
+    if (s_magicMarker != 0xBEEFCAFE) {
+        s_magicMarker = 0xBEEFCAFE;
+        s_bootCount = 0;
+        s_brownoutCount = 0;
+    }
+    s_bootCount++;
+    s_lastResetReason = esp_reset_reason();
+    if (s_lastResetReason == ESP_RST_BROWNOUT) {
+        s_brownoutCount++;
+        s_isAbnormalReset = true;
+    } else if (s_lastResetReason == ESP_RST_PANIC || s_lastResetReason == ESP_RST_INT_WDT || s_lastResetReason == ESP_RST_TASK_WDT || s_lastResetReason == ESP_RST_WDT) {
+        s_isAbnormalReset = true;
+    }
+
+    //let power rail settle after power-up before enabling rf
+    delay(150);
+
+    WiFi.persistent(false);
+    WiFi.setSleep(false);
     WiFi.mode(WIFI_STA);
+    WiFi.setTxPower(WIFI_POWER_8_5dBm); //cap tx power to 8.5dBm to avoid supply sag
     WiFi.disconnect();
 
     //lock wifi channel to 1 for esp-now
@@ -273,8 +409,14 @@ void telemetryInit() {
         Serial.println("//failed to add esp-now peer");
     }
 
-    //broadcast initial config on boot
-    telemetrySendConfig(ACK_NONE);
+    //broadcast initial config on boot with boot diagnostic ack
+    uint8_t bootAck = ACK_NONE;
+    if (s_lastResetReason == ESP_RST_BROWNOUT) {
+        bootAck = ACK_BOOT_BROWNOUT;
+    } else if (s_isAbnormalReset) {
+        bootAck = ACK_BOOT_PANIC;
+    }
+    telemetrySendConfig(bootAck);
 }
 
 void telemetrySendNow() {
@@ -307,6 +449,7 @@ void telemetrySendNow() {
     if (hasLeftWing())                    flags |= 0x10;
     if (hasRightWing())                   flags |= 0x20;
     if (isSensorCalibrating())            flags |= 0x40;
+    if (s_isAbnormalReset)                flags |= 0x80;
     pkt.modeFlags = flags;
 
     pkt.checksum = calcProtocolChecksum(reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt) - 1);
@@ -314,7 +457,73 @@ void telemetrySendNow() {
     esp_now_send(DONGLE_MAC, reinterpret_cast<const uint8_t*>(&pkt), sizeof(pkt));
 }
 
+static void telemetrySendNowUSB() {
+    if (Serial.availableForWrite() < 240) return;
+
+    uint16_t mask = 0;
+    uint16_t rawAdc[NUM_SENSORS];
+    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+        rawAdc[i] = getSensorRaw(i);
+        if (isSensorBlack(i)) {
+            mask |= (1 << i);
+        }
+    }
+
+    uint8_t flags = 0;
+    if (g_cfg.runMode == MODE_BENCH_DIAG) flags |= 0x01;
+    if (g_cfg.runMode == MODE_MOTOR_TEST) flags |= 0x02;
+    if (isNavigatorInverted())            flags |= 0x04;
+    if (g_armed)                          flags |= 0x08;
+    if (hasLeftWing())                    flags |= 0x10;
+    if (hasRightWing())                   flags |= 0x20;
+    if (isSensorCalibrating())            flags |= 0x40;
+    if (s_isAbnormalReset)                flags |= 0x80;
+
+    Serial.print("{\"t\":\"telem\",\"adc\":[");
+    for (uint8_t i = 0; i < 16; i++) {
+        Serial.print(rawAdc[i]);
+        if (i < 15) Serial.print(",");
+    }
+    Serial.printf("],\"mask\":%u,\"err\":%ld,\"l\":%ld,\"r\":%ld,\"lpwm\":%d,\"rpwm\":%d,\"st\":\"%s\",\"mode\":%u,\"flags\":%u}\n",
+                  mask,
+                  (long)computePositionError(isNavigatorInverted()),
+                  (long)getLeftTicks(),
+                  (long)getRightTicks(),
+                  getLastLeftPwm(),
+                  getLastRightPwm(),
+                  navStateToStr(isSensorCalibrating() ? STATE_CALIBRATING : getNavState()),
+                  g_cfg.runMode,
+                  flags);
+}
+
+static void telemetrySendConfigUSB(uint8_t ackEvent) {
+    if (Serial.availableForWrite() < 240) return;
+    Serial.printf("{\"t\":\"cfg\",\"base\":%d,\"min\":%d,\"max\":%d,\"turn\":%d,\"thr\":%d,\"kp\":%.3f,\"kd\":%.3f,\"enc\":%.1f,\"mode\":%u,\"inv\":%u,\"skip\":%u,\"slew\":%u,\"junc\":%u,\"uturn\":%u,\"ack\":%u,\"sens\":[",
+                  g_cfg.baseSpeed,
+                  g_cfg.minSpeed,
+                  g_cfg.maxSpeed,
+                  g_cfg.turnSpeed,
+                  g_cfg.threshEnter,
+                  g_cfg.pidKp,
+                  g_cfg.pidKd,
+                  g_cfg.encKp,
+                  g_cfg.runMode,
+                  g_cfg.enableInverted ? 1 : 0,
+                  g_cfg.skipStartExit ? 1 : 0,
+                  g_cfg.accelSlew,
+                  g_cfg.junctionMode,
+                  g_cfg.allowUturn ? 1 : 0,
+                  ackEvent);
+    for (uint8_t i = 0; i < 16; i++) {
+        Serial.print(g_cfg.sensorSens[i]);
+        if (i < 15) Serial.print(",");
+    }
+    Serial.println("]}");
+}
+
 void telemetrySendConfig(uint8_t ackEvent) {
+    telemetrySendConfigUSB(ackEvent);
+
     if (!peerAdded) return;
 
     ConfigSyncPacket pkt = {};
@@ -372,6 +581,24 @@ void telemetryUpdate() {
     if (now - lastTelemTime >= 40) {
         lastTelemTime = now;
         telemetrySendNow();
+    }
+
+    //send 5hz json telemetry over usb serial for direct dashboard connection
+    if (now - lastSerialTelemTime >= 200) {
+        lastSerialTelemTime = now;
+        telemetrySendNowUSB();
+    }
+
+    //print 1hz readable status line if serial monitor is connected
+    if (now - lastSerialStatusTime >= 1000) {
+        lastSerialStatusTime = now;
+        if (Serial.availableForWrite() >= 120) {
+            Serial.printf("[LFR] rst=%d (bo=%u) | st=%-14s err=%5ld pwm=(%4d,%4d) enc=(%5ld,%5ld) armed=%d\n",
+                          (int)s_lastResetReason, (unsigned)s_brownoutCount,
+                          getNavStateName(), (long)computePositionError(isNavigatorInverted()),
+                          getLastLeftPwm(), getLastRightPwm(),
+                          (long)getLeftTicks(), (long)getRightTicks(), g_armed ? 1 : 0);
+        }
     }
 
     //heartbeat config sync every 1500ms

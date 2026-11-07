@@ -14,6 +14,7 @@ bool sensorsUpdateCalibration(); //returns true when 5s sweep finishes
 void sensorsResetCalibrationDefault();
 void sensorsResetCalibrationMinMax();
 void sensorsSampleCalibrationStep();
+void sensorsFinalizeCalibration();
 bool isSensorCalibrating();
 
 //runtime schmitt threshold & per-sensor sensitivity adjustment
@@ -40,6 +41,7 @@ uint8_t getLastFrameLift();
 
 //returns true if bot is picked up in air
 bool isRobotLifted();
+void resetAirLiftDetector();
 
 //schmitt trigger boolean states
 bool isSensorBlack(uint8_t idx);
@@ -57,7 +59,3 @@ bool isInvertedPattern();
 
 //compute weighted lateral error in 0.01mm scale
 int32_t computePositionError(bool isInverted);
-
-//debug helpers
-void printSensorRaw();
-void printSensorCalibrated();

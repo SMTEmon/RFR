@@ -103,6 +103,7 @@ static void runMotorTest() {
 }
 
 void setup() {
+    Serial.setTxBufferSize(1024);
     Serial.begin(115200);
 
     //setup motors with stby low during boot
@@ -140,9 +141,6 @@ void loop() {
     //broadcast telemetry packet to dongle at 25hz
     telemetryUpdate();
 
-    //sample all 16 sensors at 500hz so dashboard adc bars and telemetry never freeze
-    sensorsRead(isNavigatorInverted());
-
     //handle calibration sweep if triggered
     if (isSensorCalibrating()) {
         motorsArm(false);
@@ -154,23 +152,32 @@ void loop() {
         return;
     }
 
-    //handle disarmed and active stop braking transition
+    //handle disarmed and active stop transition
     if (!g_armed) {
         if (wasArmed) {
             wasArmed = false;
             stopBrakeTimer = millis();
             motorsArm(true);
-            shortBrake();
-        } else if (stopBrakeTimer > 0 && millis() - stopBrakeTimer < STOP_BRAKE_MS) {
+            drive(0, 0); //gentle envelope ramp down
+        } else if (stopBrakeTimer > 0 && millis() - stopBrakeTimer < STOP_RAMP_MS) {
             motorsArm(true);
-            shortBrake();
+            drive(0, 0);
         } else {
             stopBrakeTimer = 0;
             coastStop();
             motorsArm(false);
         }
 
-        lastLoopMicros = micros();
+        //read sensors at 500hz while disarmed so dashboard adc bars never freeze
+        uint32_t currentMicros = micros();
+        if (currentMicros - lastLoopMicros >= LOOP_INTERVAL_US) {
+            if (currentMicros - lastLoopMicros > 50000) {
+                lastLoopMicros = currentMicros;
+            } else {
+                lastLoopMicros += LOOP_INTERVAL_US;
+            }
+            sensorsRead(false);
+        }
 
         if (g_cfg.runMode == MODE_BENCH_DIAG) {
             if (millis() - lastPrintMillis >= 150) {
@@ -182,12 +189,16 @@ void loop() {
     }
 
     //robot is armed!
-    wasArmed = true;
+    if (!wasArmed) {
+        wasArmed = true;
+        resetAirLiftDetector();
+    }
 
     //bench diagnostic mode branch (motors held at 0)
     if (g_cfg.runMode == MODE_BENCH_DIAG) {
         motorsArm(false);
         coastStop();
+        sensorsRead(false);
         if (millis() - lastPrintMillis >= 150) {
             lastPrintMillis = millis();
             runBenchDiagnostics();
@@ -198,9 +209,24 @@ void loop() {
     //open-loop motor test branch
     if (g_cfg.runMode == MODE_MOTOR_TEST) {
         motorsArm(true);
+        sensorsRead(false);
         runMotorTest();
         return;
     }
+
+    //unified 500hz (2ms) control loop for all driving modes
+    uint32_t currentMicros = micros();
+    if (currentMicros - lastLoopMicros < LOOP_INTERVAL_US) {
+        return;
+    }
+    if (currentMicros - lastLoopMicros > 50000) {
+        lastLoopMicros = currentMicros;
+    } else {
+        lastLoopMicros += LOOP_INTERVAL_US;
+    }
+
+    //read sensors exactly once per 2ms tick
+    sensorsRead(isNavigatorInverted());
 
     //manual wasd rc mode branch
     if (g_cfg.runMode == MODE_MANUAL_WASD) {
@@ -210,32 +236,14 @@ void loop() {
             motorsArm(true);
             drive(g_manualLeft, g_manualRight);
         }
-
-        if (millis() - lastPrintMillis >= 100) {
-            lastPrintMillis = millis();
-            printSensorMap();
-            Serial.printf("| [WASD] L_PWM: %4d  R_PWM: %4d  L_enc: %5ld  R_enc: %5ld\n",
-                          getLastLeftPwm(), getLastRightPwm(),
-                          (long)getLeftTicks(), (long)getRightTicks());
-        }
         return;
     }
 
     //track mapping & progressive auto-tune mode branch
     if (g_cfg.runMode == MODE_MAP_AND_TUNE) {
-        uint32_t currentMicros = micros();
-        if (currentMicros - lastLoopMicros >= LOOP_INTERVAL_US) {
-            if (currentMicros - lastLoopMicros > 50000) {
-                lastLoopMicros = currentMicros;
-            } else {
-                lastLoopMicros += LOOP_INTERVAL_US;
-            }
-
-            autotuneUpdate();
-
-            if (getTuneState() == TUNE_WAIT_VALIDATE || getTuneState() == TUNE_COMPLETE || getTuneState() == TUNE_SAFE_ABORT) {
-                g_armed = false;
-            }
+        autotuneUpdate();
+        if (getTuneState() == TUNE_WAIT_VALIDATE || getTuneState() == TUNE_COMPLETE || getTuneState() == TUNE_SAFE_ABORT) {
+            g_armed = false;
         }
         return;
     }
@@ -243,50 +251,15 @@ void loop() {
     //mapped race mode branch (segment speed limits + gain scheduling)
     if (g_cfg.runMode == MODE_MAPPED_RACE) {
         motorsArm(true);
-        uint32_t currentMicros = micros();
-        if (currentMicros - lastLoopMicros >= LOOP_INTERVAL_US) {
-            if (currentMicros - lastLoopMicros > 50000) {
-                lastLoopMicros = currentMicros;
-            } else {
-                lastLoopMicros += LOOP_INTERVAL_US;
-            }
-
-            mappedRaceUpdate();
-        }
+        mappedRaceUpdate();
         return;
     }
 
     //standard autonomous track mode branch
     motorsArm(true);
-    uint32_t currentMicros = micros();
+    navigatorUpdate();
 
-    if (currentMicros - lastLoopMicros >= LOOP_INTERVAL_US) {
-        if (currentMicros - lastLoopMicros > 50000) {
-            lastLoopMicros = currentMicros;
-        } else {
-            lastLoopMicros += LOOP_INTERVAL_US;
-        }
-
-        navigatorUpdate();
-
-        if (getNavState() == STATE_STOPPED) {
-            g_armed = false;
-        }
-    }
-
-    if (millis() - lastPrintMillis >= 100) {
-        lastPrintMillis = millis();
-        printSensorMap();
-        printFeatureTags();
-        Serial.printf("| State: %-15s Dist: %5.1f cm  L: %5ld  R: %5ld\n",
-                      getNavStateName(),
-                      ticksToCm(getAvgTicks()),
-                      (long)getLeftTicks(),
-                      (long)getRightTicks());
-    }
-
-    if (millis() - lastRawPrintMillis >= 1000) {
-        lastRawPrintMillis = millis();
-        printRawADC();
+    if (getNavState() == STATE_STOPPED) {
+        g_armed = false;
     }
 }

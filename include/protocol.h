@@ -1,5 +1,11 @@
 #pragma once
+#if defined(ARDUINO)
 #include <Arduino.h>
+#else
+#include <stdint.h>
+#include <stddef.h>
+#include <string.h>
+#endif
 
 //shared communication protocol between lfr robot and dongle
 //all structs packed 1-byte aligned to match exactly across esp32 targets
@@ -32,15 +38,17 @@ enum CmdType : uint8_t {
 };
 
 enum AckEvent : uint8_t {
-    ACK_NONE          = 0,
-    ACK_PARAMS_OK     = 1,
-    ACK_NVS_SAVED     = 2,
-    ACK_CALIB_DONE    = 3,
-    ACK_CALIB_FALLBACK= 4,
-    ACK_CALIB_DEFAULT = 5,
-    ACK_ENC_RESET     = 6,
-    ACK_MAP_SAVED     = 7,
-    ACK_TUNE_COMPLETE = 8
+    ACK_NONE           = 0,
+    ACK_PARAMS_OK      = 1,
+    ACK_NVS_SAVED      = 2,
+    ACK_CALIB_DONE     = 3,
+    ACK_CALIB_FALLBACK = 4,
+    ACK_CALIB_DEFAULT  = 5,
+    ACK_ENC_RESET      = 6,
+    ACK_MAP_SAVED      = 7,
+    ACK_TUNE_COMPLETE  = 8,
+    ACK_BOOT_BROWNOUT  = 9,
+    ACK_BOOT_PANIC     = 10
 };
 
 enum NavState : uint8_t {
@@ -54,6 +62,22 @@ enum NavState : uint8_t {
     STATE_STOPPED         = 7,
     STATE_CALIBRATING     = 8
 };
+
+//state name lookup helper shared between robot and dongle
+inline const char* navStateToStr(uint8_t st) {
+    switch (st) {
+        case STATE_START_EXIT:      return "START_EXIT";
+        case STATE_NORMAL_PID:     return "NORMAL_PID";
+        case STATE_INVERTED_PID:   return "INVERTED_PID";
+        case STATE_SHARP_TURN:     return "SHARP_TURN";
+        case STATE_GAP_OR_DEADEND: return "GAP_OR_DEADEND";
+        case STATE_UTURN_180:      return "UTURN_180";
+        case STATE_ALL_BLACK_CHECK:return "ALL_BLACK_CHECK";
+        case STATE_STOPPED:        return "STOPPED";
+        case STATE_CALIBRATING:    return "CALIBRATING";
+        default:                   return "UNKNOWN";
+    }
+}
 
 enum TuneState : uint8_t {
     TUNE_IDLE             = 0,

@@ -39,8 +39,8 @@ static void setMuxAddress(const int pins[4], uint8_t channel) {
 static uint16_t readSensorChannel(const int pins[4], int signalPin, uint8_t channel) {
     setMuxAddress(pins, channel);
 
-    //let mux and phototransistor rc line stabilize (40us)
-    delayMicroseconds(40);
+    //let mux and phototransistor rc line stabilize
+    delayMicroseconds(MUX_SETTLE_US);
 
     //dummy read to discharge/precharge esp32 adc internal capacitor
     analogRead(signalPin);
@@ -102,6 +102,11 @@ bool isRobotLifted() {
     return airLiftActive;
 }
 
+void resetAirLiftDetector() {
+    airLiftStartTime = 0;
+    airLiftActive = false;
+}
+
 void sensorsResetCalibrationMinMax() {
     for (uint8_t i = 0; i < NUM_SENSORS; i++) {
         rawMin[i] = 4095;
@@ -136,17 +141,20 @@ bool sensorsUpdateCalibration() {
     if (millis() - calibStartTime >= CALIB_SWEEP_MS) {
         calibrating = false;
         digitalWrite(PIN_LED, LOW);
-
-        //guard against channels that were not swept over black and white
-        for (uint8_t i = 0; i < NUM_SENSORS; i++) {
-            if (rawMax[i] <= rawMin[i] + 600) {
-                rawMin[i] = DEFAULT_RAW_MIN;
-                rawMax[i] = DEFAULT_RAW_MAX;
-            }
-        }
+        sensorsFinalizeCalibration();
         return true;
     }
     return false;
+}
+
+void sensorsFinalizeCalibration() {
+    //guard against channels that were not swept over black and white
+    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+        if (rawMax[i] <= rawMin[i] + 600) {
+            rawMin[i] = DEFAULT_RAW_MIN;
+            rawMax[i] = DEFAULT_RAW_MAX;
+        }
+    }
 }
 
 void sensorsResetCalibrationDefault() {
@@ -224,10 +232,15 @@ void sensorsRead(bool isInverted) {
         if (norm > 750) darkCount++;
     }
 
-    //airborne detector: if 14+ sensors see near-complete dark (>750) for >120ms
-    if (darkCount >= 14) {
+    uint8_t rawAirCount = 0;
+    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
+        if (sensorRaw[i] > 3600) rawAirCount++;
+    }
+
+    //airborne detector: if 15+ sensors see open-air dark (>3600 raw) continuously for >800ms
+    if (rawAirCount >= 15 && darkCount >= 15) {
         if (airLiftStartTime == 0) airLiftStartTime = millis();
-        if (millis() - airLiftStartTime > 120) {
+        if (millis() - airLiftStartTime > 800) {
             airLiftActive = true;
         }
     } else {
@@ -404,37 +417,4 @@ int32_t computePositionError(bool isInverted) {
 
     lastError = static_cast<int32_t>(weightedSum / totalWeight);
     return lastError;
-}
-
-void printSensorRaw() {
-    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
-        uint8_t ch = logicalToMux(i);
-        sensorRaw[i] = readSensorChannel(selectPins, PIN_MUX_SIG, ch);
-    }
-
-    Serial.println("\n+-----------------------------------------------------------+");
-    Serial.println("|                    ANALOG SENSOR READINGS                 |");
-    Serial.println("+-----------------------------------------------------------+");
-
-    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
-        Serial.printf("| S%02d: %4d ", i, sensorRaw[i]);
-        if ((i + 1) % 4 == 0) {
-            Serial.println("|");
-        }
-    }
-    Serial.println("+-----------------------------------------------------------+");
-}
-
-void printSensorCalibrated() {
-    Serial.println("\n+-----------------------------------------------------------+");
-    Serial.println("|                  CALIBRATED SENSOR READINGS               |");
-    Serial.println("+-----------------------------------------------------------+");
-
-    for (uint8_t i = 0; i < NUM_SENSORS; i++) {
-        Serial.printf("| S%02d: %4d ", i, sensorVal[i]);
-        if ((i + 1) % 4 == 0) {
-            Serial.println("|");
-        }
-    }
-    Serial.println("+-----------------------------------------------------------+");
 }

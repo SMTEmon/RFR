@@ -14,21 +14,15 @@ static uint8_t lastSlew = 3;
 static uint8_t lastJunc = 0;
 static uint8_t lastUturn = 0;
 
-//state name lookup
-static const char* getStateName(uint8_t st) {
-    switch (st) {
-        case STATE_START_EXIT:      return "START_EXIT";
-        case STATE_NORMAL_PID:     return "NORMAL_PID";
-        case STATE_INVERTED_PID:   return "INVERTED_PID";
-        case STATE_SHARP_TURN:     return "SHARP_TURN";
-        case STATE_GAP_OR_DEADEND: return "GAP_OR_DEADEND";
-        case STATE_UTURN_180:      return "UTURN_180";
-        case STATE_ALL_BLACK_CHECK:return "ALL_BLACK_CHECK";
-        case STATE_STOPPED:        return "STOPPED";
-        case STATE_CALIBRATING:    return "CALIBRATING";
-        default:                   return "UNKNOWN";
-    }
-}
+//thread-safe rx queue between wifi isr task and main loop
+struct RxPacket {
+    uint8_t len;
+    uint8_t data[160];
+};
+static portMUX_TYPE rxMux = portMUX_INITIALIZER_UNLOCKED;
+static RxPacket rxQueue[6];
+static volatile uint8_t rxHead = 0;
+static volatile uint8_t rxTail = 0;
 
 //register peer cleanly if not already added
 static void registerLfrPeer(const uint8_t *mac) {
@@ -54,6 +48,20 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
 #endif
     registerLfrPeer(srcMac);
 
+    if (len <= 0 || len > 160) return;
+
+    portENTER_CRITICAL(&rxMux);
+    uint8_t nextHead = (rxHead + 1) % 6;
+    if (nextHead != rxTail) {
+        rxQueue[rxHead].len = len;
+        memcpy(rxQueue[rxHead].data, data, len);
+        rxHead = nextHead;
+    }
+    portEXIT_CRITICAL(&rxMux);
+}
+
+//decode packet and forward to webserial on core 1
+static void processAndPrintPacket(const uint8_t *data, int len) {
     if (len == sizeof(TelemetryPacket)) {
         const TelemetryPacket *telem = reinterpret_cast<const TelemetryPacket*>(data);
         if (telem->header != 0xAA) return;
@@ -61,7 +69,6 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
         uint8_t expected = calcProtocolChecksum(data, sizeof(TelemetryPacket) - 1);
         if (telem->checksum != expected) return;
 
-        //forward directly as compact json line over usb serial
         Serial.print("{\"t\":\"telem\",\"adc\":[");
         for (uint8_t i = 0; i < 16; i++) {
             Serial.print(telem->rawAdc[i]);
@@ -74,7 +81,7 @@ static void onDataRecv(const uint8_t *mac, const uint8_t *data, int len) {
                       (long)telem->rightTicks,
                       telem->leftPwm,
                       telem->rightPwm,
-                      getStateName(telem->navState),
+                      navStateToStr(telem->navState),
                       telem->runMode,
                       telem->modeFlags);
         return;
@@ -319,6 +326,21 @@ void setup() {
 }
 
 void loop() {
+    //drain rx packet queue and forward json to serial
+    while (true) {
+        RxPacket pkt;
+        bool hasPkt = false;
+        portENTER_CRITICAL(&rxMux);
+        if (rxHead != rxTail) {
+            pkt = rxQueue[rxTail];
+            rxTail = (rxTail + 1) % 6;
+            hasPkt = true;
+        }
+        portEXIT_CRITICAL(&rxMux);
+        if (!hasPkt) break;
+        processAndPrintPacket(pkt.data, pkt.len);
+    }
+
     //read incoming serial lines from webserial
     while (Serial.available()) {
         char c = (char)Serial.read();

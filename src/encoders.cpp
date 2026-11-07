@@ -1,17 +1,26 @@
 #include "encoders.h"
 #include "config.h"
+#include <hal/gpio_ll.h>
+#include <esp_cpu.h>
 
 //atomic access lock
 static portMUX_TYPE encMux = portMUX_INITIALIZER_UNLOCKED;
 
 static volatile int32_t leftTicks = 0;
 static volatile int32_t rightTicks = 0;
+static volatile uint32_t lastLeftCycles = 0;
+static volatile uint32_t lastRightCycles = 0;
+static constexpr uint32_t MIN_EDGE_CYCLES = 2400; //10us at 240mhz rejects brush emi
 
 //left motor encoder isr
 static void IRAM_ATTR leftEncoderISR() {
-    //read phase b to determine direction
-    int a = digitalRead(PIN_ENC_LA);
-    int b = digitalRead(PIN_ENC_LB);
+    uint32_t now = esp_cpu_get_cycle_count();
+    if (now - lastLeftCycles < MIN_EDGE_CYCLES) return;
+    lastLeftCycles = now;
+
+    //direct register read from iram avoiding flash cache calls
+    int a = gpio_ll_get_level(&GPIO, PIN_ENC_LA);
+    int b = gpio_ll_get_level(&GPIO, PIN_ENC_LB);
     if (a == b) {
         leftTicks = leftTicks + 1;
     } else {
@@ -21,9 +30,13 @@ static void IRAM_ATTR leftEncoderISR() {
 
 //right motor encoder isr
 static void IRAM_ATTR rightEncoderISR() {
-    int a = digitalRead(PIN_ENC_RA);
-    int b = digitalRead(PIN_ENC_RB);
-    //phase polarity for forward roll
+    uint32_t now = esp_cpu_get_cycle_count();
+    if (now - lastRightCycles < MIN_EDGE_CYCLES) return;
+    lastRightCycles = now;
+
+    //direct register read from iram avoiding flash cache calls
+    int a = gpio_ll_get_level(&GPIO, PIN_ENC_RA);
+    int b = gpio_ll_get_level(&GPIO, PIN_ENC_RB);
     if (a != b) {
         rightTicks = rightTicks + 1;
     } else {
@@ -32,9 +45,9 @@ static void IRAM_ATTR rightEncoderISR() {
 }
 
 void encodersInit() {
-    //left encoder inputs (pin 35 has no internal pullup)
+    //left encoder inputs
     pinMode(PIN_ENC_LA, INPUT_PULLUP);
-    pinMode(PIN_ENC_LB, INPUT);
+    pinMode(PIN_ENC_LB, INPUT_PULLUP);
 
     //right encoder inputs
     pinMode(PIN_ENC_RA, INPUT_PULLUP);

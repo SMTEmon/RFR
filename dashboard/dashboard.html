@@ -72,6 +72,8 @@
     }
     .btn:active { transform: scale(0.98); }
     .btn-connect { background: var(--cyan); color: #082f49; }
+    .btn-demo    { background: #3b0764; color: #d8b4fe; border: 1px solid #7e22ce; }
+    .btn-demo:hover { background: #581c87; }
     .btn-start   { background: var(--emerald); color: #022c22; }
     .btn-estop   { background: var(--rose); color: #4c0519; }
 
@@ -791,11 +793,18 @@
       <span class="status-badge" id="badgeLift">LIFT: 0 (OK)</span>
     </div>
     <div class="header-controls">
+      <button class="btn btn-demo" id="btnDemo">🧪 RUN DEMO</button>
       <button class="btn btn-connect" id="btnConnect">⚡ CONNECT USB</button>
       <button class="btn btn-start" id="btnStart">▶ ARM / START</button>
       <button class="btn btn-estop" id="btnEstop">⏹ STOP [SPACE]</button>
     </div>
   </header>
+
+  <!-- Environment & Protocol Diagnostic Banner (auto-detected) -->
+  <div id="envWarningBanner" style="display:none; padding:10px 16px; border-radius:8px; font-size:12px; line-height:1.5;">
+    <strong>⚠️ WebSerial Access Warning:</strong>
+    <span id="envWarningText"></span>
+  </div>
 
   <!-- Main Grid -->
   <div class="dashboard-grid">
@@ -1164,6 +1173,27 @@
     </div>
   </div>
 
+  <!-- Collapsible Raw Serial Monitor & Debug Console -->
+  <div class="card" style="margin-top: 2px;">
+    <div class="card-title" style="cursor: pointer; user-select: none;" id="toggleSerialMonitor">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span>📟 Live Serial Monitor & Raw Stream</span>
+        <span id="rxLed" style="display:inline-block; width:9px; height:9px; border-radius:50%; background:#334155; transition:background 0.08s;"></span>
+      </div>
+      <span id="serialLogToggleText" style="font-size:11px; color:var(--cyan); font-family:monospace;">[SHOW LOG ▼]</span>
+    </div>
+    <div id="serialConsoleBody" style="display:none; flex-direction:column; gap:8px; margin-top:8px;">
+      <div id="serialLogBox" style="background:#050811; border:1px solid #1a2333; border-radius:6px; padding:10px; height:180px; overflow-y:auto; font-family:monospace; font-size:11px; color:#94a3b8; white-space:pre-wrap; line-height:1.4;"></div>
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:11px; color:var(--text-muted);">Displays all incoming lines (telemetry JSON, [LFR] diagnostic logs, ESP-NOW bridge messages)</span>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-micro" id="btnScrollLog">AUTO-SCROLL: ON</button>
+          <button class="btn-micro" id="btnClearSerialLog">CLEAR</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Export Modal -->
   <div class="modal" id="exportModal">
     <div class="modal-content">
@@ -1468,6 +1498,23 @@
       }
     }
 
+    //environment & webserial capability check
+    const envBanner = document.getElementById('envWarningBanner');
+    const envText = document.getElementById('envWarningText');
+    if (!('serial' in navigator)) {
+      envBanner.style.display = 'block';
+      envBanner.style.background = '#7f1d1d';
+      envBanner.style.color = '#fecaca';
+      envBanner.style.border = '1px solid #ef4444';
+      envText.innerHTML = " Your browser does not support the <strong>Web Serial API</strong>. Please open this page in <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong>. (Firefox and Safari do not support WebSerial).";
+    } else if (window.location.protocol === 'file:') {
+      envBanner.style.display = 'block';
+      envBanner.style.background = '#451a03';
+      envBanner.style.color = '#fde68a';
+      envBanner.style.border = '1px solid #d97706';
+      envText.innerHTML = " You opened this dashboard via <code>file://</code>. In modern browsers, WebSerial is often blocked on file URLs. If clicking <strong>CONNECT USB</strong> does nothing, run <code>.\\run_dashboard.bat</code> in the project folder to open via <code>http://localhost:8000</code>.";
+    }
+
     //WebSerial & Message Handling
     let port, reader, writer;
     let rxBuffer = "";
@@ -1482,27 +1529,112 @@
       setTimeout(() => t.classList.remove('show'), 2800);
     }
 
-    async function sendCommand(obj, isHighPriority = false) {
-      if (!writer) return;
-      const line = JSON.stringify(obj) + "\n";
-      try {
-        const enc = new TextEncoder();
-        await writer.write(enc.encode(line));
-      } catch (e) {
-        console.error("TX error:", e);
+    //raw serial debug console logic
+    let autoScrollLog = true;
+    const serialLogBox = document.getElementById('serialLogBox');
+    const rxLed = document.getElementById('rxLed');
+    const toggleSerialMonitor = document.getElementById('toggleSerialMonitor');
+    const serialConsoleBody = document.getElementById('serialConsoleBody');
+    const serialLogToggleText = document.getElementById('serialLogToggleText');
+
+    toggleSerialMonitor.addEventListener('click', () => {
+      const isHidden = serialConsoleBody.style.display === 'none';
+      serialConsoleBody.style.display = isHidden ? 'flex' : 'none';
+      serialLogToggleText.textContent = isHidden ? '[HIDE LOG ▲]' : '[SHOW LOG ▼]';
+    });
+
+    document.getElementById('btnScrollLog').addEventListener('click', (e) => {
+      autoScrollLog = !autoScrollLog;
+      e.target.textContent = `AUTO-SCROLL: ${autoScrollLog ? 'ON' : 'OFF'}`;
+      e.target.classList.toggle('active', autoScrollLog);
+    });
+
+    document.getElementById('btnClearSerialLog').addEventListener('click', () => {
+      if (serialLogBox) serialLogBox.innerHTML = '';
+    });
+
+    function logRawSerial(prefix, text) {
+      if (rxLed) {
+        rxLed.style.background = prefix === "TX" ? "#f59e0b" : "#06b6d4";
+        setTimeout(() => { if (rxLed) rxLed.style.background = "#334155"; }, 60);
+      }
+      if (!serialLogBox) return;
+      const now = new Date();
+      const timeStr = now.toTimeString().split(' ')[0] + '.' + String(now.getMilliseconds()).padStart(3, '0');
+      const div = document.createElement('div');
+      div.style.marginBottom = '2px';
+      if (prefix === "TX") {
+        div.style.color = '#fbbf24';
+        div.textContent = `[${timeStr}] [TX] ${text}`;
+      } else if (prefix === "SYS") {
+        div.style.color = '#38bdf8';
+        div.textContent = `[${timeStr}] [SYS] ${text}`;
+      } else if (text.startsWith('[LFR]')) {
+        div.style.color = '#4ade80';
+        div.textContent = `[${timeStr}] ${text}`;
+      } else {
+        div.style.color = '#94a3b8';
+        div.textContent = `[${timeStr}] [RX] ${text}`;
+      }
+      serialLogBox.appendChild(div);
+      if (serialLogBox.children.length > 250) {
+        serialLogBox.removeChild(serialLogBox.firstChild);
+      }
+      if (autoScrollLog) {
+        serialLogBox.scrollTop = serialLogBox.scrollHeight;
       }
     }
 
+    let txQueue = Promise.resolve();
+    function sendCommand(obj, isHighPriority = false) {
+      if (!writer) return;
+      const line = JSON.stringify(obj) + "\n";
+      logRawSerial("TX", JSON.stringify(obj));
+      const enc = new TextEncoder();
+      const data = enc.encode(line);
+      txQueue = txQueue.then(() => writer.write(data)).catch(e => {
+        console.error("TX error:", e);
+        logRawSerial("SYS", "TX Error: " + e.message);
+      });
+      return txQueue;
+    }
+
     async function connectSerial() {
+      if (!('serial' in navigator)) {
+        showToast("⚠️ WebSerial not supported in this browser!");
+        alert("Web Serial API is not supported in this browser.\n\nPlease open this dashboard in Google Chrome or Microsoft Edge via http://localhost:8000 (run .\\run_dashboard.bat).");
+        return;
+      }
+
       try {
         port = await navigator.serial.requestPort();
-        await port.open({ baudRate: 115200 });
+        try {
+          await port.open({ baudRate: 115200 });
+        } catch (openErr) {
+          port = null;
+          console.error("Serial port open failed:", openErr);
+          showToast("❌ Could not open port: " + openErr.message);
+          alert("Could not open serial port:\n" + openErr.message + "\n\nCommon causes:\n1. The COM port is already in use by PlatformIO Serial Monitor, Arduino IDE, or PuTTY. Close them first!\n2. USB cable disconnected or permission denied.");
+          return;
+        }
 
         const btn = document.getElementById('btnConnect');
         btn.textContent = "🔌 DISCONNECT";
         btn.classList.add('btn-estop');
         document.getElementById('badgeUsb').textContent = "USB: CONNECTED";
         document.getElementById('badgeUsb').classList.add('connected');
+        showToast("🔌 USB Serial Connected (115200 baud)");
+        logRawSerial("SYS", "Serial port opened @ 115200 baud");
+
+        //clear dtr/rts on external uart bridges (ch340/ch9102/cp210x) to prevent auto-reset hold
+        const info = port.getInfo ? port.getInfo() : {};
+        if (info.usbVendorId !== 0x303a && port.setSignals) {
+          try {
+            await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+          } catch (e) {
+            console.warn("setSignals not supported on this adapter", e);
+          }
+        }
 
         writer = port.writable.getWriter();
         reader = port.readable.getReader();
@@ -1513,7 +1645,11 @@
 
         readSerialLoop();
       } catch (err) {
+        port = null;
         console.error("Serial connect error:", err);
+        if (err.name !== 'NotFoundError') { // NotFoundError is user cancelling port picker
+          showToast("⚠️ Serial Error: " + err.message);
+        }
       }
     }
 
@@ -1529,17 +1665,22 @@
             rxBuffer = lines.pop();
             for (const line of lines) {
               const trimmed = line.trim();
+              if (!trimmed) continue;
+              logRawSerial("RX", trimmed);
               if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
                 try {
                   const data = JSON.parse(trimmed);
                   handleIncomingJSON(data);
-                } catch (e) {}
+                } catch (e) {
+                  console.warn("JSON parse error:", e, trimmed);
+                }
               }
             }
           }
         }
       } catch (e) {
         console.error("Read loop error:", e);
+        logRawSerial("SYS", "Read loop ended / port closed");
       }
     }
 
@@ -1592,7 +1733,17 @@
     }, 500);
 
     function handleIncomingJSON(data) {
-      if (data.t === "telem") {
+      if (data.t === "ready") {
+        document.getElementById('badgeUsb').textContent = "USB: DONGLE READY";
+        document.getElementById('badgeUsb').classList.add('connected');
+        showToast("📡 Dongle bridge connected! Waiting for Robot ESP-NOW signal...");
+        logRawSerial("SYS", data.dongle || "ESP32-C5 Dongle Bridge Ready");
+      } else if (data.t === "ack") {
+        logRawSerial("SYS", `Ack command: ${data.cmd}`);
+      } else if (data.t === "err") {
+        showToast(`⚠️ Dongle Error: ${data.msg}`);
+        logRawSerial("SYS", `Dongle Error: ${data.msg}`);
+      } else if (data.t === "telem") {
         lastRfRecvTime = performance.now();
         document.getElementById('badgeRf').textContent = "ROBOT RF: 25Hz LINK";
         document.getElementById('badgeRf').classList.add('connected');
@@ -1664,7 +1815,18 @@
         document.getElementById('flagBench').classList.toggle('active', (data.flags & 0x01) !== 0);
         document.getElementById('flagCal').classList.toggle('active', (data.flags & 0x40) !== 0);
 
+        //brownout or watchdog crash flag from robot
+        if (data.flags & 0x80) {
+          document.getElementById('badgeRf').textContent = "⚠️ ABNORMAL REBOOT / BROWNOUT";
+          document.getElementById('badgeRf').classList.add('warn');
+        }
+
       } else if (data.t === "cfg") {
+        if (data.ack === 9) {
+          showToast("⚠️ Alert: Robot suffered a BROWNOUT reset!");
+        } else if (data.ack === 10) {
+          showToast("⚠️ Alert: Robot suffered a PANIC/WDT crash reset!");
+        }
         applyConfigToUI(data);
       } else if (data.t === "map_path") {
         mapPathData = data;
@@ -1835,8 +1997,14 @@
     document.getElementById('btnValidateSweep').addEventListener('click', () => {
       if (document.getElementById('chkApplyOpt').checked && mapPathData) {
         document.getElementById('sliderThr').value = mapPathData.thr;
+        document.getElementById('valThr').textContent = mapPathData.thr;
+        document.getElementById('threshLabel').textContent = `ENTER THRESH: ${mapPathData.thr}`;
         document.getElementById('sliderSlew').value = mapPathData.slew;
-        for (let i = 0; i < 16; i++) sensorSens[i] = mapPathData.sens[i];
+        document.getElementById('valSlew').textContent = mapPathData.slew;
+        for (let i = 0; i < 16; i++) {
+          sensorSens[i] = mapPathData.sens[i];
+          updateSensColUI(i);
+        }
         updateBarThresholdMarkers();
         sendLiveTunings();
       }
@@ -1939,11 +2107,79 @@
     });
     document.getElementById('btnResetEnc').addEventListener('click', () => sendCommand({ cmd: 5 }));
 
-    const triggerStop = () => sendCommand({ cmd: 1 }, true);
-    const triggerStart = () => sendCommand({ cmd: 2 }, true);
+    const triggerStop = () => {
+      if (!writer && !demoInterval) {
+        showToast("⚠️ USB not connected! Click '⚡ CONNECT USB' first.");
+        return;
+      }
+      sendCommand({ cmd: 1 }, true);
+    };
+    const triggerStart = () => {
+      if (!writer && !demoInterval) {
+        showToast("⚠️ USB not connected! Click '⚡ CONNECT USB' first.");
+        return;
+      }
+      sendCommand({ cmd: 2 }, true);
+    };
 
     document.getElementById('btnEstop').addEventListener('click', triggerStop);
     document.getElementById('btnStart').addEventListener('click', triggerStart);
+
+    //interactive demo / simulation mode
+    let demoInterval = null;
+    function toggleDemoMode() {
+      const btn = document.getElementById('btnDemo');
+      if (demoInterval) {
+        clearInterval(demoInterval);
+        demoInterval = null;
+        btn.textContent = "🧪 RUN DEMO";
+        btn.style.background = "#3b0764";
+        showToast("⏹ Demo mode stopped");
+        document.getElementById('badgeRf').textContent = "ROBOT RF: NO SIGNAL";
+        document.getElementById('badgeRf').classList.remove('connected');
+        document.getElementById('badgeArm').textContent = "DISARMED (MOTORS OFF)";
+        document.getElementById('badgeArm').classList.remove('armed');
+      } else {
+        btn.textContent = "🧪 STOP DEMO";
+        btn.style.background = "var(--purple)";
+        showToast("▶ Demo active: Simulating 25Hz telemetry stream");
+        logRawSerial("SYS", "Started synthetic 25Hz telemetry simulation");
+        let step = 0;
+        demoInterval = setInterval(() => {
+          step++;
+          const t = step * 0.08;
+          const fakeAdc = [];
+          let mask = 0;
+          // Sweep virtual tape line across sensor bar
+          const centerSensor = 7.5 + 4.8 * Math.sin(t * 0.7);
+          for (let i = 0; i < 16; i++) {
+            const dist = Math.abs(i - centerSensor);
+            const val = Math.max(120, Math.round(3800 * Math.exp(-dist * dist / 2.2) + (Math.sin(step + i) * 60)));
+            fakeAdc.push(val);
+            if (val > 1500) mask |= (1 << i);
+          }
+          const err = Math.round((centerSensor - 7.5) * 500);
+          const baseSpd = 140;
+          const turnDelta = Math.round(err / 25);
+          const lpwm = Math.max(0, Math.min(220, baseSpd - turnDelta));
+          const rpwm = Math.max(0, Math.min(220, baseSpd + turnDelta));
+          handleIncomingJSON({
+            t: "telem",
+            adc: fakeAdc,
+            mask: mask,
+            err: err,
+            l: Math.round(step * 14.2),
+            r: Math.round(step * 13.8),
+            lpwm: lpwm,
+            rpwm: rpwm,
+            st: "FOLLOWING",
+            mode: 0,
+            flags: 0x08 // armed
+          });
+        }, 40); // 25Hz
+      }
+    }
+    document.getElementById('btnDemo').addEventListener('click', toggleDemoMode);
 
     //WASD manual drive engine
     const keysDown = { w: false, a: false, s: false, d: false, shift: false };
